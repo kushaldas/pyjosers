@@ -1,0 +1,90 @@
+name: Tests, wheels and documentation
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      retention-days:
+        type: number
+        default: 1
+
+permissions:
+  contents: read
+
+env:
+  FORCE_COLOR: "1"
+  UV_LINK_MODE: "copy"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.10', '3.14']
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Install SoftHSM and OpenSC
+        run: sudo apt-get update && sudo apt-get install -y softhsm2 opensc
+      - name: Install development dependencies
+        run: |
+          python -m pip install --upgrade uv
+          uv pip install --system -e '.[dev]'
+      - name: Check Rust formatting and linting
+        if: matrix.python == '3.14'
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --all-features -- -D warnings
+      - name: Run tests
+        run: python -m pytest -q
+      - name: Build strict documentation and run examples
+        if: matrix.python == '3.14'
+        run: |
+          sphinx-build -W --keep-going -b html docs docs/_build/html
+          sphinx-build -W -b doctest docs docs/_build/doctest
+
+  features:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: minimal
+            args: --no-default-features
+          - name: legacy
+            args: --features legacy
+    name: Feature tests (${{ matrix.name }})
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install SoftHSM and OpenSC
+        run: sudo apt-get update && sudo apt-get install -y softhsm2 opensc
+      - name: Build and test the feature configuration
+        env:
+          FEATURE_ARGS: ${{ matrix.args }}
+        run: |
+          python -m pip install --upgrade uv
+          uv pip install --system 'maturin>=1.9,<2' pytest jwcrypto
+          # Deliberately split the fixed flags from the workflow matrix.
+          maturin build --locked $FEATURE_ARGS --out dist
+          uv pip install --system --no-index --find-links dist pyjosers
+          python -m pytest -q
+
+  distributions:
+    uses: ./.github/workflows/wheels.yml
+    with:
+      retention-days: ${{ inputs.retention-days || 1 }}

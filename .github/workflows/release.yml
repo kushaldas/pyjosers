@@ -1,0 +1,71 @@
+name: Release to PyPI
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Check release version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+      - name: Check package and tag versions
+        env:
+          RELEASE_REF: ${{ github.ref }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+
+          python_version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
+          rust_version = tomllib.loads(Path("Cargo.toml").read_text())["package"]["version"]
+          if python_version != rust_version:
+              raise SystemExit("Python and Rust package versions disagree")
+          if os.environ["RELEASE_REF"].startswith("refs/tags/"):
+              if os.environ["RELEASE_TAG"] != f"v{python_version}":
+                  raise SystemExit("Release tag must match the package version")
+          PY
+
+  distributions:
+    needs: version
+    uses: ./.github/workflows/ci.yml
+    with:
+      retention-days: 3
+
+  publish:
+    name: Publish tested distributions
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: distributions
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: pypi
+      url: https://pypi.org/p/pyjosers
+    permissions:
+      id-token: write
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v8
+        with:
+          path: dist
+          pattern: pyjosers_*
+          merge-multiple: true
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/

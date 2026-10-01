@@ -1,0 +1,27 @@
+[package]
+name = "pyjosers"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89"
+license = "BSD-2-Clause"
+description = "Python JOSE bindings powered by jose-rs"
+readme = "README.md"
+exclude = ["dist/**", "target/**", ".venv/**", "docs/_build/**", "**/__pycache__/**", "python/pyjosers/*.so"]
+
+[lib]
+name = "_native"
+crate-type = ["cdylib"]
+
+[features]
+default = ["post-quantum", "pkcs11"]
+post-quantum = ["jose-rs/post-quantum", "kryptering/post-quantum"]
+pkcs11 = ["jose-rs/pkcs11", "kryptering/pkcs11"]
+legacy = ["jose-rs/deprecated"]
+
+[dependencies]
+pyo3 = { version = "0.29.0", features = ["extension-module", "abi3-py310"] }
+jose-rs = { version = "=0.8.0", default-features = false }
+kryptering = { version = "0.6.0", default-features = false, features = ["rustcrypto"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+pkcs8 = "0.10"

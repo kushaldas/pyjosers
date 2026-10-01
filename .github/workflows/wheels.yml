@@ -1,0 +1,143 @@
+name: Build and test distributions
+
+on:
+  workflow_call:
+    inputs:
+      retention-days:
+        type: number
+        default: 1
+
+permissions:
+  contents: read
+
+env:
+  FORCE_COLOR: "1"
+  UV_LINK_MODE: "copy"
+
+jobs:
+  wheels:
+    name: Wheel (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: manylinux_x86_64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            architecture: x64
+            image: quay.io/pypa/manylinux_2_28_x86_64
+          - platform: manylinux_aarch64
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            architecture: arm64
+            image: quay.io/pypa/manylinux_2_28_aarch64
+          - platform: macos_aarch64
+            os: macos-15
+            target: aarch64-apple-darwin
+            architecture: arm64
+            image: ''
+          - platform: windows_amd64
+            os: windows-2025
+            target: x86_64-pc-windows-msvc
+            architecture: x64
+            image: ''
+          - platform: windows_aarch64
+            os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            architecture: arm64
+            image: ''
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+          architecture: ${{ matrix.architecture }}
+      - uses: dtolnay/rust-toolchain@stable
+        if: runner.os != 'Linux' && matrix.platform != 'windows_aarch64'
+        with:
+          targets: ${{ matrix.target }}
+      - name: Install native Windows ARM Rust toolchain
+        if: matrix.platform == 'windows_aarch64'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://static.rust-lang.org/rustup/dist/aarch64-pc-windows-msvc/rustup-init.exe" -OutFile rustup-init.exe
+          .\rustup-init.exe --default-toolchain stable-aarch64-pc-windows-msvc --profile minimal -y
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "$env:USERPROFILE\.cargo\bin" | Out-File -Append -Encoding ascii $env:GITHUB_PATH
+      - name: Install build and test dependencies
+        run: |
+          python -m pip install --upgrade uv
+          uv pip install --system 'maturin>=1.9,<2' pytest jwcrypto
+      - name: Install SoftHSM and OpenSC
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y softhsm2 opensc
+      - name: Build manylinux wheel
+        if: runner.os == 'Linux'
+        env:
+          MANYLINUX_IMAGE: ${{ matrix.image }}
+        run: |
+          docker pull "$MANYLINUX_IMAGE"
+          docker run --rm -v "$GITHUB_WORKSPACE:/io" "$MANYLINUX_IMAGE" bash /io/build-wheels.sh
+      - name: Build macOS wheel
+        if: runner.os == 'macOS'
+        env:
+          MACOSX_DEPLOYMENT_TARGET: '11.0'
+          RUST_TARGET: ${{ matrix.target }}
+        run: maturin build --release --strip --locked --interpreter python --target "$RUST_TARGET" --out dist
+      - name: Build Windows wheel
+        if: runner.os == 'Windows'
+        env:
+          RUST_TARGET: ${{ matrix.target }}
+        run: maturin build --release --strip --locked --interpreter python --target "$RUST_TARGET" --out dist
+      - name: Test the built wheel
+        run: |
+          uv pip install --system --no-index --find-links dist pyjosers
+          python -m pytest -q
+      - name: Store wheel
+        uses: actions/upload-artifact@v7
+        with:
+          name: pyjosers_${{ matrix.platform }}
+          path: dist/*.whl
+          retention-days: ${{ inputs.retention-days }}
+          if-no-files-found: error
+          compression-level: 0
+
+  sdist:
+    name: Build and test source distribution
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.10'
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install build and test dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y softhsm2 opensc
+          python -m pip install --upgrade uv
+          uv pip install --system 'maturin>=1.9,<2' pytest jwcrypto
+      - name: Build source distribution
+        run: maturin sdist --out dist
+      - name: Build and test outside the checkout
+        run: |
+          set -euo pipefail
+          package_dir=$(mktemp -d)
+          tar -xzf dist/pyjosers-*.tar.gz -C "$package_dir"
+          cd "$package_dir"/pyjosers-*
+          maturin build --release --strip --locked --interpreter python --out wheels
+          uv pip install --system --no-index --find-links wheels pyjosers
+          python -m pytest -q
+      - name: Store source distribution
+        uses: actions/upload-artifact@v7
+        with:
+          name: pyjosers_sdist
+          path: dist/*.tar.gz
+          retention-days: ${{ inputs.retention-days }}
+          if-no-files-found: error
+          compression-level: 0

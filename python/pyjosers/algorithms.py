@@ -1,0 +1,13 @@
+"""Supported JOSE names, deliberately excluding unsecured and legacy algorithms."""
+from ._native import POST_QUANTUM, LEGACY
+
+JWS_ALGORITHMS = (
+    "HS256", "HS384", "HS512", "RS256", "RS384", "RS512",
+    "PS256", "PS384", "PS512", "ES256", "ES384", "ES512", "EdDSA",
+) + (("ML-DSA-44", "ML-DSA-65", "ML-DSA-87", "ML-DSA-44-ES256",
+      "ML-DSA-65-ES256", "ML-DSA-87-ES384", "ML-DSA-44-Ed25519",
+      "ML-DSA-65-Ed25519", "ML-DSA-87-Ed448") if POST_QUANTUM else ())
+JWE_ALGORITHMS = ("dir", "A128KW", "A192KW", "A256KW", "RSA-OAEP-256") + (("RSA-OAEP",) if LEGACY else ())
+JWE_ENCRYPTIONS = ("A128GCM", "A192GCM", "A256GCM", "A128CBC-HS256", "A192CBC-HS384", "A256CBC-HS512")
+CEK_BITS = {"A128GCM": 128, "A192GCM": 192, "A256GCM": 256,
+            "A128CBC-HS256": 256, "A192CBC-HS384": 384, "A256CBC-HS512": 512}

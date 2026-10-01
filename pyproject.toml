@@ -1,0 +1,36 @@
+[build-system]
+requires = ["maturin>=1.9,<2"]
+build-backend = "maturin"
+
+[project]
+name = "pyjosers"
+version = "0.1.0"
+description = "Rust-backed JOSE with a familiar jwcrypto-style Python API"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "BSD-2-Clause"
+classifiers = ["Programming Language :: Rust", "Programming Language :: Python :: 3", "Topic :: Security :: Cryptography"]
+
+
+[project.urls]
+Documentation = "https://pyjosers.readthedocs.org/"
+Repository = "https://github.com/kushaldas/pyjosers"
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "jwcrypto>=1.5.6", "sphinx>=8", "furo", "maturin>=1.9,<2"]
+docs = ["sphinx>=8", "furo"]
+
+[tool.maturin]
+python-source = "python"
+module-name = "pyjosers._native"
+include = [
+    { path = "docs/*.rst", format = "sdist" },
+    { path = "docs/conf.py", format = "sdist" },
+    { path = "tests/*.py", format = "sdist" },
+    { path = "examples/*.py", format = "sdist" },
+    { path = "LICENSE", format = "sdist" },
+]
+exclude = ["dist/**", "target/**", ".venv/**", "docs/_build/**", "**/__pycache__/**", "**/*.pyc"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

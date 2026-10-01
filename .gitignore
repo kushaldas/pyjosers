@@ -1,0 +1,8 @@
+.venv/
+target/
+__pycache__/
+*.so
+*.pyc
+.pytest_cache/
+docs/_build/
+dist/
