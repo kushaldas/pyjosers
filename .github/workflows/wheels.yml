@@ -46,11 +46,6 @@ jobs:
             target: x86_64-pc-windows-msvc
             architecture: x64
             image: ''
-          - platform: windows_aarch64
-            os: windows-11-arm
-            target: aarch64-pc-windows-msvc
-            architecture: arm64
-            image: ''
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
