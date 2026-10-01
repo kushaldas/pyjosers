@@ -41,6 +41,10 @@ jobs:
                   raise SystemExit("Release tag must match the package version")
           PY
 
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Validate the registry lockfile before building distributions
+        run: cargo metadata --locked --all-features --format-version 1 > /dev/null
+
   distributions:
     needs: version
     uses: ./.github/workflows/ci.yml

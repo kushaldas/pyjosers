@@ -84,6 +84,10 @@ The reusable ``wheels.yml`` workflow builds and tests manylinux x86_64 and
 aarch64, macOS aarch64, and Windows x86_64 and aarch64 wheels. It also builds
 and tests the source distribution outside the checkout. Linux jobs provision
 SoftHSM and OpenSC for the PKCS#11 integration tests.
+The Windows ARM64 job provisions statically linked ARM64 OpenSSL through
+vcpkg so that the test-only ``jwcrypto`` dependency can build ``cryptography``
+when no compatible binary wheel is available. This is not a pyjosers runtime
+dependency; the job still builds and tests a native ARM64 pyjosers wheel.
 
 Releases
 --------
@@ -91,7 +95,9 @@ Releases
 ``release.yml`` checks that ``Cargo.toml`` and ``pyproject.toml`` agree and
 that a release tag matches their version (for example ``v0.1.0`` for the
 first release). It runs the complete CI workflow before publishing the tested
-wheels and source distribution. Manual dispatch on a branch builds and tests
+wheels and source distribution, and checks ``Cargo.lock`` with
+``cargo metadata --locked`` before starting the build matrix.
+Manual dispatch on a branch builds and tests
 without publishing; dispatch on a matching release tag also publishes.
 
 Configure the PyPI trusted publisher for this repository, workflow
