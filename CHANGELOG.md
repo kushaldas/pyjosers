@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.0 - 2026-10-21
+
+- Use published jose-rs 0.10.0, Kryptering 0.7 and PyO3 0.30.1; remove the
+  temporary sibling dependency and synchronize package/runtime/docs versions.
+- Expose build-aware capabilities, X25519/ECDH agreement, GCM key wrapping,
+  PBES2, external AAD, critical extensions, and flattened/general JWE.
+- Add bounded JWKS selection and diagnostics, any/all signature reports,
+  authenticated payload/header results, exact checked claims, and error categories.
+- Add PKCS#1/SEC1 imports, encrypted PKCS#8, certificate-key extraction,
+  validated thumbprint URIs and agreement-key derivation.
+- Require an explicit password choice for private PEM exports. Default JWKS
+  limits are 4 MiB, 1,024 entries and 64 candidates; overrides remain available.
+- Reuse native envelopes and batch signature verification; stage JWE recipients
+  and encrypt once. No benchmark or measured performance claim is included.
+- Update executable examples, migration guidance, feature/build tests and release
+  checks. Document upstream encoding and algorithm restrictions, including the
+  narrow workaround for parsing empty GCM ciphertext in JSON envelopes.
+
 ## 0.1.0
 
 First release: PyO3 bindings for crates.io jose-rs 0.8.0 and kryptering 0.6,

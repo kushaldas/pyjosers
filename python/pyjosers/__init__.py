@@ -1,12 +1,16 @@
 """Rust-backed JOSE with jwcrypto-style JWK, JWS, JWE and JWT APIs."""
 from . import algorithms, common, jwk, jws, jwe, jwt, x509
 from ._native import JoseError, UnsupportedAlgorithm, POST_QUANTUM, PKCS11, MAX_TOKEN_BYTES
-from .jwk import JWK, JWKSet
+from .jwk import JWK, JWKSet, SetLimits, SelectionPolicy, JWKThumbprintURI
+from .results import Authenticated, is_authentication_failure
+from . import capabilities
 from .jws import JWS
 from .jwe import JWE
 from .jwt import JWT, Validation
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = ["jwk", "jws", "jwe", "jwt", "common", "algorithms", "x509",
            "JWK", "JWKSet", "JWS", "JWE", "JWT", "Validation", "JoseError",
-           "UnsupportedAlgorithm", "POST_QUANTUM", "PKCS11", "MAX_TOKEN_BYTES"]
+           "UnsupportedAlgorithm", "POST_QUANTUM", "PKCS11", "MAX_TOKEN_BYTES",
+           "SetLimits", "SelectionPolicy", "JWKThumbprintURI", "Authenticated",
+           "is_authentication_failure", "capabilities"]

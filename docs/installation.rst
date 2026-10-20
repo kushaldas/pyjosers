@@ -23,10 +23,10 @@ Build a wheel and source distribution::
    maturin build --release --locked
    maturin sdist
 
-Builds download jose-rs 0.8.0 and kryptering 0.6 from crates.io; sibling
-source checkouts are not required. No backend source is vendored in this repository.
-Custom protected JWE headers use the public upstream encryption helpers.
-``Cargo.lock`` pins Rust dependencies for reproducible builds.
+Source builds use published crates.io jose-rs 0.10.0, Kryptering 0.7 and PyO3
+0.30.1. Neither sibling checkouts nor unpublished backend patches are required.
+No backend source is vendored. ``Cargo.lock`` records registry checksums and
+pins dependencies for reproducible builds.
 
 Features
 --------

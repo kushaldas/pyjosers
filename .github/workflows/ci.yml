@@ -62,6 +62,10 @@ jobs:
         include:
           - name: minimal
             args: --no-default-features
+          - name: pkcs11-only
+            args: --no-default-features --features pkcs11
+          - name: post-quantum-only
+            args: --no-default-features --features post-quantum
           - name: legacy
             args: --features legacy
     name: Feature tests (${{ matrix.name }})
@@ -83,6 +87,17 @@ jobs:
           maturin build --locked $FEATURE_ARGS --out dist
           uv pip install --system --no-index --find-links dist pyjosers
           python -m pytest -q
+
+  msrv:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.10'
+      - uses: dtolnay/rust-toolchain@1.89.0
+      - run: cargo check --locked --all-features
 
   distributions:
     uses: ./.github/workflows/wheels.yml

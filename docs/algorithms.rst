@@ -29,7 +29,7 @@ Signatures
      - ES256, ES384, ES512
      - EC P-256, P-384, P-521 respectively
    * - EdDSA
-     - EdDSA
+     - EdDSA, Ed25519
      - OKP Ed25519 only
    * - ML-DSA
      - ML-DSA-44, ML-DSA-65, ML-DSA-87
@@ -49,7 +49,10 @@ nor enabling these algorithms claims a validated FIPS cryptographic module.
 Encryption
 ----------
 
-Key management: ``dir``, ``A128KW``, ``A192KW``, ``A256KW``, ``RSA-OAEP-256``.
+Key management: ``dir``, ``A128KW``, ``A192KW``, ``A256KW``, ``RSA-OAEP-256``,
+``ECDH-ES``, ``ECDH-ES+A128KW``, ``ECDH-ES+A192KW``, ``ECDH-ES+A256KW``,
+``A128GCMKW``, ``A192GCMKW``, ``A256GCMKW``, ``PBES2-HS256+A128KW``,
+``PBES2-HS384+A192KW``, and ``PBES2-HS512+A256KW``.
 An optional ``legacy`` build also provides SHA-1-based ``RSA-OAEP``.
 
 Content encryption: ``A128GCM``, ``A192GCM``, ``A256GCM``, ``A128CBC-HS256``,
@@ -76,8 +79,8 @@ Upstream operation mapping
      - ``JWS``, ``detach_payload``, ``understood_crit``, ``verify_all``
    * - Certificate binding
      - ``pyjosers.x509``
-   * - Compact JWE, key-bound operations, algorithm policy
-     - ``JWE``, ``allowed_algs`` and JWK metadata
+   * - Compact, flattened/general JWE, key-bound operations and policy
+     - ``JWE``, ``allowed_algs``, AAD, critical extensions and recipient selection
    * - JWT encode/decode, key-set verification, claims and validation
      - ``JWT``, ``jwt.encode``, ``jwt.decode``, ``Validation``
    * - Nested JWT, unverified decode
@@ -92,3 +95,26 @@ Upstream operation mapping
 Rust trait objects and raw software key handles are intentionally internal.
 The public API exposes the corresponding JOSE operations instead of requiring
 Python applications to assemble Rust cryptographic providers.
+
+Build-aware reports
+---------------------
+
+.. doctest::
+
+   >>> from pyjosers import capabilities
+   >>> capabilities.find("jwe", "ECDH-ES").available
+   True
+   >>> capabilities.find("jwe", "RSA1_5").status
+   'refused'
+   >>> capabilities.find("jws", "ES256K").status
+   'unsupported'
+
+``report()`` includes supported, feature-gated, unsupported and refused names;
+``available(kind)`` filters usable entries. Kinds are ``jws``, ``jwe``,
+``encryption``, ``format`` and ``key``. Rows include operation names and backend
+notes; format availability does not promise every key type has that encoding.
+``features()`` reports the installed feature configuration. Reports are cached
+from the installed extension, without probing keys or doing crypto.
+
+See :doc:`backend-0100` for the complete integration matrix and
+:doc:`encryption` for algorithm-specific multi-recipient restrictions.

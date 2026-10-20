@@ -9,6 +9,9 @@ Repository layout
    Cargo.toml / Cargo.lock     Native crate and pinned dependencies
    pyproject.toml             Python metadata and maturin configuration
    src/lib.rs                 Owned JSON/bytes boundary, errors, GIL release
+   src/envelopes.rs           Native parsed JWE and recipient operations
+   src/reports.rs             Batched signature verification and reports
+   src/extensions.rs          Key formats, diagnostics and capability reports
    src/hsm.rs                 Native PKCS#11 provider/session/operation handles
    python/pyjosers/            Public compatibility API and annotations
    tests/                     Interoperability, policy and migration tests
@@ -23,8 +26,10 @@ classes. A Rust SoftwareKey is never exposed as a Python cryptography object.
 
 The JWS Python layer handles object lifecycle and general-serialization
 aggregation. Each signature is produced/verified by the Rust flattened-JWS
-implementation, preserving the original protected-header encoding. The JWE
-JSON adapter preserves the five authenticated compact segments.
+implementation, preserving the original protected-header encoding. JWE envelopes remain native objects across parsing, decryption and serialization;
+metadata access does not clone ciphertext. Software single-signature verification
+avoids constructing a general report. Multi-signature operations cache prepared
+verifiers for each key/algorithm pair within that operation.
 
 Validation commands
 -------------------
@@ -32,6 +37,7 @@ Validation commands
 .. code-block:: sh
 
    uv pip install -e '.[dev]'
+   cargo +1.89.0 check --locked --all-features
    cargo fmt --check
    cargo clippy --all-features -- -D warnings
    pytest -q
@@ -51,6 +57,10 @@ Feature checks
 
    maturin develop --no-default-features
    pytest -q
+   maturin develop --no-default-features --features pkcs11
+   pytest -q
+   maturin develop --no-default-features --features post-quantum
+   pytest -q
    maturin develop --features legacy
    pytest -q
    maturin develop
@@ -61,16 +71,12 @@ HSM operations skip when their corresponding feature is unavailable.
 Updating the upstream dependencies
 ----------------------------------
 
-Use crates.io dependencies for normal builds. The upstream source checkouts
-are ``../jose-rs`` and ``../kryptering``; do not copy their source into this
-repository. To test an unpublished jose-rs release, use a temporary Cargo
-override such as ``--config 'patch.crates-io.jose-rs.path="../jose-rs"'``.
-After publishing the upstream release, run ``cargo update`` without
-the override to record its registry checksum in ``Cargo.lock``.
-The backend exposes ``jwe::encrypt_with_jwk_header`` publicly, so custom JWE headers
-require no local visibility patch.
-Review algorithm/feature changes and regenerate the lockfile deliberately.
-Re-run interop, feature, documentation, and clean source-distribution builds.
+jose-rs 0.10.0, Kryptering 0.7 and PyO3 0.30.1 are registry dependencies.
+Sibling checkouts are useful for inspection only; do not vendor them or add a
+path dependency to a release. Review the backend capability report, operation
+restrictions and cryptographic trait family before changing versions. Update the
+lockfile deliberately and check the Rust 1.89 minimum as well as stable Rust.
+See :doc:`backend-0100` for coverage and the empty-GCM parser workaround.
 
 Package verification
 --------------------
@@ -79,7 +85,8 @@ A source distribution must build after extraction without either sibling project
 A wheel should import and run tests from a fresh virtual environment.
 Keep generated extension binaries and documentation
 output out of source control. The ``.github/workflows/ci.yml`` workflow tests
-Python 3.10 and 3.14, minimal and legacy features, and strict documentation.
+Python 3.10 and 3.14, Rust 1.89, minimal/PKCS#11-only/post-quantum-only/legacy
+features, executable examples, and strict documentation.
 The reusable ``wheels.yml`` workflow builds and tests manylinux x86_64 and
 aarch64, macOS aarch64, and Windows x86_64 and aarch64 wheels. It also builds
 and tests the source distribution outside the checkout. Linux jobs provision
@@ -92,9 +99,8 @@ dependency; the job still builds and tests a native ARM64 pyjosers wheel.
 Releases
 --------
 
-``release.yml`` checks that ``Cargo.toml`` and ``pyproject.toml`` agree and
-that a release tag matches their version (for example ``v0.1.0`` for the
-first release). It runs the complete CI workflow before publishing the tested
+``release.yml`` checks that Cargo, Python metadata, runtime and documentation
+versions agree and that a release tag matches their version (``v0.2.0``). It runs the complete CI workflow before publishing the tested
 wheels and source distribution, and checks ``Cargo.lock`` with
 ``cargo metadata --locked`` before starting the build matrix.
 Manual dispatch on a branch builds and tests

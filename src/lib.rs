@@ -4,6 +4,10 @@ use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use serde::{de::DeserializeOwned, Serialize};
 
+mod envelopes;
+mod extensions;
+mod reports;
+
 #[cfg(feature = "pkcs11")]
 mod hsm;
 
@@ -18,9 +22,28 @@ pyo3::create_exception!(_native, JWTInvalidClaimValue, JoseError);
 pyo3::create_exception!(_native, UnsupportedAlgorithm, JoseError);
 
 /// Translate backend errors without exposing secret key representations.
+fn annotate_error(err: PyErr, e: &RustError) -> PyErr {
+    use jose_rs::ErrorCategory;
+    let category = match e.category() {
+        ErrorCategory::UnsupportedCapability => "unsupported_capability",
+        ErrorCategory::InvalidStructure => "invalid_structure",
+        ErrorCategory::PolicyRejection => "policy_rejection",
+        ErrorCategory::AuthenticationFailure => "authentication_failure",
+        ErrorCategory::KeyMaterial => "key_material",
+        ErrorCategory::Cryptographic => "cryptographic",
+        ErrorCategory::Encoding => "encoding",
+        _ => "unknown",
+    };
+    Python::attach(|py| {
+        let value = err.value(py);
+        let _ = value.setattr("category", category);
+        let _ = value.setattr("authentication_failure", e.is_authentication_failure());
+    });
+    err
+}
 fn error(e: RustError) -> PyErr {
     let message = e.to_string();
-    match e {
+    let err = match &e {
         RustError::Key(_) => InvalidJWKValue::new_err(message),
         RustError::UnsupportedAlgorithm(_) => UnsupportedAlgorithm::new_err(message),
         RustError::Expired => JWTExpired::new_err(message),
@@ -29,8 +52,16 @@ fn error(e: RustError) -> PyErr {
             JWTInvalidClaimValue::new_err(message)
         }
         _ => JoseError::new_err(message),
-    }
+    };
+    annotate_error(err, &e)
 }
+fn encryption_error(e: RustError) -> PyErr {
+    annotate_error(InvalidJWEData::new_err(e.to_string()), &e)
+}
+fn signature_error(e: RustError) -> PyErr {
+    annotate_error(InvalidJWSSignature::new_err(e.to_string()), &e)
+}
+
 fn parse<T: DeserializeOwned>(s: &str) -> PyResult<T> {
     serde_json::from_str(s).map_err(|_| JoseError::new_err("invalid JSON or field types"))
 }
@@ -64,6 +95,7 @@ fn key_generate(
             "RSA" => jwk::generate_rsa(size),
             "EC" => jwk::generate_ec(&crv),
             "OKP" if crv == "Ed25519" => jwk::generate_ed25519(),
+            "OKP" if crv == "X25519" => jwk::generate_x25519(),
             "oct" if size > 0 && size.is_multiple_of(8) => jwk::generate_symmetric(size / 8),
             #[cfg(feature = "post-quantum")]
             "AKP" => match JwsAlgorithm::from_str(&alg)
@@ -102,10 +134,18 @@ fn key_public(s: &str) -> PyResult<String> {
     }
     json(&k.to_public_jwk())
 }
-/// Compute an RFC 7638 SHA-256 thumbprint.
+/// Compute an RFC 7638 thumbprint with an explicitly supported SHA-2 hash.
 #[pyfunction]
-fn key_thumbprint(s: &str) -> PyResult<String> {
-    jwk::thumbprint::thumbprint_sha256(&key(s)?).map_err(error)
+#[pyo3(signature = (s, hash_name="sha256"))]
+fn key_thumbprint(s: &str, hash_name: &str) -> PyResult<String> {
+    use jwk::thumbprint::ThumbprintHash;
+    let hash = match hash_name {
+        "sha256" => ThumbprintHash::Sha256,
+        "sha384" => ThumbprintHash::Sha384,
+        "sha512" => ThumbprintHash::Sha512,
+        _ => return Err(UnsupportedAlgorithm::new_err("unsupported thumbprint hash")),
+    };
+    jwk::thumbprint::thumbprint(&key(s)?, hash).map_err(error)
 }
 /// Import unencrypted PKCS#8 private or SPKI public DER.
 #[pyfunction]
@@ -138,7 +178,7 @@ fn key_export(py: Python<'_>, s: String, private: bool) -> PyResult<Py<PyBytes>>
             // public field; the private seed still determines the same key.
             if k.kty == "OKP" && k.crv.as_deref() == Some("Ed25519") {
                 use pkcs8::der::Encode;
-                let mut info = pkcs8::PrivateKeyInfo::try_from(bytes.as_slice())
+                let mut info = pkcs8::PrivateKeyInfoRef::try_from(bytes.as_slice())
                     .map_err(|_| InvalidJWKValue::new_err("invalid PKCS#8 export"))?;
                 info.public_key = None;
                 info.to_der()
@@ -158,22 +198,23 @@ fn signature_key(
     header: &JoseHeader,
     op: jwk::JwkOp,
 ) -> PyResult<(kryptering::SignatureAlgorithm, kryptering::SoftwareKey)> {
+    let k = signature_jwk(s, header)?;
+    let alg = JwsAlgorithm::from_str(&header.alg).map_err(error)?;
+    let material = jwk::jwk_to_signature_key(&k, alg, op).map_err(error)?;
+    Ok((alg.to_crypto().map_err(error)?, material))
+}
+fn signature_jwk(s: &str, header: &JoseHeader) -> PyResult<jwk::Jwk> {
     let mut k = key(s)?;
-    // Existing Inmor keys label Ed25519 explicitly; JOSE uses EdDSA on the wire.
-    if k.kty == "OKP" && k.crv.as_deref() == Some("Ed25519") && k.alg.as_deref() == Some("Ed25519")
+    // Preserve the existing one-way metadata alias only for the EdDSA wire
+    // name. Explicit Ed25519 headers retain exact backend algorithm pinning.
+    if header.alg == "EdDSA"
+        && k.kty == "OKP"
+        && k.crv.as_deref() == Some("Ed25519")
+        && k.alg.as_deref() == Some("Ed25519")
     {
         k.alg = Some("EdDSA".into());
     }
-    k.check_op(op).map_err(error)?;
-    if k.alg.as_deref().is_some_and(|a| a != header.alg) {
-        return Err(InvalidJWKValue::new_err(
-            "JWK alg does not match protected alg",
-        ));
-    }
-    let alg = JwsAlgorithm::from_str(&header.alg)
-        .and_then(|a| a.to_crypto())
-        .map_err(error)?;
-    Ok((alg, jwk::jwk_to_software_key(&k).map_err(error)?))
+    Ok(k)
 }
 /// Sign a flattened JWS, including detached and RFC 7797 payload modes.
 // Keep the native signature aligned with the Python/PKCS#11 signing protocol.
@@ -192,8 +233,11 @@ fn sign(
 ) -> PyResult<String> {
     py.detach(move || {
         let header: JoseHeader = parse(&protected)?;
-        let (alg, sw) = signature_key(&s, &header, jwk::JwkOp::Sign)?;
-        let signer = kryptering::SoftwareSigner::new(alg, sw).map_err(|e| error(e.into()))?;
+        let mut k = signature_jwk(&s, &header)?;
+        // A caller-selected protected algorithm binds an unpinned compatibility key.
+        if k.alg.is_none() {
+            k.alg = Some(header.alg.clone());
+        }
         let options = jose_rs::jws::SignOptions::new()
             .with_b64(
                 header
@@ -206,16 +250,16 @@ fn sign(
             .with_key_reference_headers(allow_key_reference_headers);
         let unprotected = unprotected.as_deref().map(parse).transpose()?;
         let result = if detached {
-            jose_rs::jws::json::sign_flattened_detached_opts(
-                &signer,
+            jose_rs::jws::json::sign_flattened_detached_with_jwk_opts(
+                &k,
                 &payload,
                 &header,
                 unprotected,
                 &options,
             )
         } else {
-            jose_rs::jws::json::sign_flattened_opts(
-                &signer,
+            jose_rs::jws::json::sign_flattened_with_jwk_opts(
+                &k,
                 &payload,
                 &header,
                 unprotected,
@@ -243,17 +287,16 @@ fn verify(
         let header: JoseHeader =
             serde_json::from_slice(&jose_rs::base64url::decode(&jws.protected).map_err(error)?)
                 .map_err(|_| InvalidJWSObject::new_err("invalid protected header"))?;
-        let (alg, sw) = signature_key(&s, &header, jwk::JwkOp::Verify)?;
-        let verifier = kryptering::SoftwareVerifier::new(alg, sw).map_err(|e| error(e.into()))?;
-        jose_rs::jws::json::verify_flattened_opts(
-            &verifier,
+        let k = signature_jwk(&s, &header)?;
+        jose_rs::jws::json::verify_flattened_with_jwk_opts(
+            &k,
             &jws,
             detached.as_deref(),
             &jose_rs::jws::VerifyOptions {
                 understood_crit: understood,
             },
         )
-        .map_err(|e| InvalidJWSSignature::new_err(e.to_string()))
+        .map_err(signature_error)
     })?;
     Ok(PyBytes::new(py, &bytes).unbind())
 }
@@ -287,17 +330,29 @@ fn encrypt(
             .map_err(error)
     })
 }
-/// Decrypt using a caller-selected algorithm, never silently taking it from the token.
+/// Decrypt with JWK policy and an optional inclusive plaintext-byte limit.
 #[pyfunction]
-fn decrypt(py: Python<'_>, s: String, token: String, alg: String) -> PyResult<Py<PyBytes>> {
+#[pyo3(signature = (s, token, alg, max_plaintext=None))]
+fn decrypt(
+    py: Python<'_>,
+    s: String,
+    token: String,
+    alg: String,
+    max_plaintext: Option<usize>,
+) -> PyResult<Py<PyBytes>> {
     let bytes = py.detach(move || {
         let mut k = key(&s)?;
         if k.alg.as_deref().is_some_and(|a| a != alg) {
             return Err(InvalidJWKValue::new_err("JWK alg mismatch"));
         }
         k.alg = Some(alg);
-        jose_rs::jwe::decrypt_with_jwk(&k, &token)
-            .map_err(|e| InvalidJWEData::new_err(e.to_string()))
+        let mut options = jose_rs::jwe::JweDecryptOptions::permissive();
+        if let Some(limit) = max_plaintext {
+            options = options.with_max_plaintext(limit);
+        }
+        let envelope = jose_rs::jwe::json::FlattenedJwe::from_compact(&token).map_err(error)?;
+        jose_rs::jwe::json::decrypt_flattened_with_jwk_options(&k, &envelope, &options)
+            .map_err(encryption_error)
     })?;
     Ok(PyBytes::new(py, &bytes).unbind())
 }
@@ -323,7 +378,8 @@ struct Policy {
 }
 /// Validate already authenticated claims using the complete jose-rs policy.
 #[pyfunction]
-fn validate_claims(claims: &str, header: &str, options: &str) -> PyResult<()> {
+#[pyo3(signature = (claims, header, options, now=None))]
+fn validate_claims(claims: &str, header: &str, options: &str, now: Option<&str>) -> PyResult<()> {
     let p: Policy = parse(options)?;
     let mut v = jose_rs::jwt::Validation::new();
     v.issuer = p.issuer;
@@ -344,8 +400,13 @@ fn validate_claims(claims: &str, header: &str, options: &str) -> PyResult<()> {
     v.require_nbf = p.require_nbf;
     v.require_iat = p.require_iat || p.max_age.is_some();
     v.require_kid = p.require_kid;
-    v.validate_with_header(&parse(claims)?, &parse(header)?)
-        .map_err(error)
+    let claims = jose_rs::jwt::Claims::from_json_bytes(claims.as_bytes()).map_err(error)?;
+    let header = parse(header)?;
+    match now {
+        Some(now) => v.validate_at(&claims, Some(&header), now.parse().map_err(error)?),
+        None => v.validate_with_header(&claims, &header),
+    }
+    .map_err(error)
 }
 /// Certificate binding helpers; these do not validate certificate trust chains.
 #[pyfunction]
@@ -367,6 +428,9 @@ fn certificate(action: &str, header: &str, der: Vec<u8>) -> PyResult<String> {
 /// Register the private native implementation; the Python package is the public API.
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    extensions::register(m)?;
+    envelopes::register(m)?;
+    reports::register(m)?;
     macro_rules! functions { ($($f:ident),*) => { $(m.add_function(wrap_pyfunction!($f, m)?)?;)* }; }
     functions!(
         key_normalize,

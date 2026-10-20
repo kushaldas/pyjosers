@@ -6,6 +6,7 @@ Package
 
 .. automodule:: pyjosers
    :members:
+   :no-index:
 
 Keys
 ----
@@ -59,4 +60,13 @@ Algorithm constants
 -------------------
 
 .. automodule:: pyjosers.algorithms
+   :members:
+
+Capabilities and authenticated results
+----------------------------------------
+
+.. automodule:: pyjosers.capabilities
+   :members:
+
+.. automodule:: pyjosers.results
    :members:

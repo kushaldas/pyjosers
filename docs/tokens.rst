@@ -99,9 +99,20 @@ Complete Rust policy
 ``decode`` uses this policy, including the future-``iat`` check. It verifies
 the signature first. ``Validation.validate`` is provided for already
 authenticated claims; it is not a signature verifier. Numeric dates must be
-nonnegative finite JSON numbers within the upstream range; fractional values
-are floored for Rust's second-resolution checks, but original claims retain
-the fractional value. Strings and booleans are not accepted as numeric dates.
+nonnegative finite JSON numbers within the upstream range, with at most
+nanosecond precision (insignificant trailing zeros are allowed). They are no
+longer floored. Original claims JSON is preserved through signing and validation;
+Python dictionary floats may already have lost precision. Helpers returning
+dictionaries use ordinary Python numeric types; use ``JWT.claims`` for the
+original authenticated JSON. Strings and booleans are not accepted as dates.
+Expiration is exclusive, including equality with expiration plus leeway.
+``Validation.validate_at(claims, header, now)`` accepts a trusted clock value;
+a decimal-number string preserves its exact precision. Never take this clock
+from untrusted token claims.
+
+``JWT(..., max_plaintext=4096)`` limits encrypted claims. The corresponding
+``decode_nested(..., max_plaintext=4096)`` option limits the entire inner signed
+JWT, not just its claims. Both limits are inclusive.
 
 Nested JWTs
 -----------
@@ -132,3 +143,32 @@ the signature, issuer, audience or timestamps. Similarly,
 These are discovery tools, not authorization decisions. Do not use a payload's
 embedded key as an application trust anchor merely because it verifies the
 same payload; federation trust still needs to be established separately.
+
+Checked JSON and authenticated results
+----------------------------------------
+
+Registered claim types and exact numeric dates are checked when claims are
+assigned, before signing. Duplicate members are rejected throughout nested
+claim objects. Original JSON text remains available in ``JWT.claims``; signing
+JSON strings avoids a Python float round trip. Large finite application numbers
+such as ``1e400`` remain valid JSON numbers in that text.
+
+``validate_authenticated(key)`` and ``jwt.decode_authenticated`` return an
+``Authenticated`` result. Its ``value`` is a claims dictionary using ``Decimal``
+for fractional or exponential numbers, so exact JSON numbers survive access.
+``protected`` contains only the header that authenticated the payload;
+``unprotected`` metadata is kept separate. Ordinary dictionary-returning helpers
+retain Python's standard JSON number conversion. Do not use their floating-point
+values for exact arithmetic on very large or high-precision application claims.
+
+``JWT.serialize`` emits compact JWTs; ``compact=False`` is refused.
+``strict_serialization=True`` also refuses incoming JSON serialization. The
+compatibility default still accepts JSON JWS/JWE input. ``selection_policy``
+flows through to key selection, and ``understood_crit`` declares application
+extensions. PBES2 encryption accepts passwords and exposes
+``pbes2_iterations`` / ``pbes2_max_iterations``. Nested helpers accept independent
+inner and outer critical-extension lists, explicit encryption headers, and a
+password decryption work budget. The outer protected content type must be JWT.
+
+.. literalinclude:: ../examples/nested.py
+   :language: python

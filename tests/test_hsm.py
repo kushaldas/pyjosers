@@ -21,7 +21,7 @@ def test_softhsm(tmp_path, rsa_key):
     env = {**os.environ, "SOFTHSM2_CONF": str(conf)}
     subprocess.run(["softhsm2-util", "--init-token", "--free", "--label", "pyjosers-test", "--so-pin", "12345678", "--pin", "1234"], env=env, check=True, capture_output=True)
     pem = tmp_path / "rsa.pem"
-    pem.write_bytes(rsa_key.export_to_pem(private_key=True))
+    pem.write_bytes(rsa_key.export_to_pem(private_key=True, password=None))
     pem.chmod(0o600)
     subprocess.run(["softhsm2-util", "--import", str(pem), "--token", "pyjosers-test", "--label", "signing", "--id", "01", "--pin", "1234"], env=env, check=True, capture_output=True)
     secret = tmp_path / "hmac.bin"

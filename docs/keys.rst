@@ -1,94 +1,113 @@
 Keys and key sets
 =================
 
-Generation
-----------
+Generation and metadata
+-------------------------
 
-``JWK.generate`` accepts keyword arguments, with ``size`` expressed in bits.
-Additional keywords are metadata, such as ``kid``, ``alg``, ``use`` and
-``key_ops``. They cannot replace generated private or public material.
+``JWK.generate`` uses bit sizes and standard JOSE names. RSA defaults to 2048
+bits; supported RSA sizes are 2048 through 8192 bits, with exponent 65537.
+EC requires P-256, P-384 or P-521. OKP supports Ed25519 and X25519. AKP generation
+requires a post-quantum build and an explicit ML-DSA/composite algorithm.
+Octet sizes are inferred from HMAC/AES algorithm names, otherwise defaulting to
+256 bits. Explicit sizes still undergo operation checks.
 
-.. code-block:: python
+.. doctest::
 
-   from pyjosers import JWK
+   >>> from pyjosers import JWK, JWKThumbprintURI
+   >>> key = JWK.generate(kty="EC", crv="P-256", alg="ES256", kid="current")
+   >>> imported = JWK.from_json(key.export())
+   >>> imported.thumbprint() == key.thumbprint()
+   True
+   >>> JWKThumbprintURI.parse(key.thumbprint_uri("sha-384")).matches(key.public())
+   True
 
-   rsa = JWK.generate(kty="RSA", size=3072, alg="PS256")
-   ec = JWK.generate(kty="EC", crv="P-384", alg="ES384")
-   ed = JWK.generate(kty="OKP", crv="Ed25519", alg="EdDSA")
-   hmac = JWK.generate(kty="oct", size=512, alg="HS512")
-   pq = JWK.generate(kty="AKP", alg="ML-DSA-65")
-   composite = JWK.generate(kty="AKP", alg="ML-DSA-65-ES256")
+Mapping mutations are validated when a key is next used. ``alg``, ``use`` and
+``key_ops`` are enforced for every operation. ``public()`` removes private-only
+operations and retains agreement operations for EC/X25519 keys.
+The compatibility alias accepts Ed25519-key ``alg=Ed25519`` metadata with an
+``EdDSA`` wire header. The reverse alias is refused; allowlists distinguish them.
 
-RSA defaults to 2048 bits and cannot be generated below that minimum. Octet
-keys default to 256 bits; select 384 or 512 bits for HS384 or HS512. EC requires
-one of P-256, P-384 or P-521. OKP generation supports Ed25519. AKP generation
-requires a post-quantum build and an explicit supported algorithm.
+``export()`` includes private material by default for JWCrypto compatibility.
+Use ``export_public()`` or ``public().export()`` for public interchange. Symmetric
+keys have no public representation. Key representations redact secrets, but
+explicitly exported Python bytes, strings and dictionaries cannot be guaranteed
+to be zeroized. Thumbprints identify material; they do not confer trust.
 
-Import, export and metadata
----------------------------
+``thumbprint`` supports SHA-256 (default), SHA-384 and SHA-512, as strings or
+objects with the corresponding ``name``. Thumbprint URIs use hyphenated hash
+names and are validated for prefix, encoding and digest length.
 
-.. code-block:: python
+PEM, DER and encrypted key files
+----------------------------------
 
-   key = JWK.from_json(key_json)
-   key = JWK(**key_dictionary)
-   key["kid"] = "rotation-2026"
-   assert key.kid == key.get("kid")
-   public_key = key.public()
-   private_json = key.export()       # contains private material
-   public_json = key.export_public()
-   thumbprint = key.thumbprint()     # RFC 7638, SHA-256
-   uri = key.thumbprint_uri()        # RFC 9278
+.. doctest::
 
-Imports validate key material through jose-rs. Mapping mutations are validated
-when the key is next used. Each cryptographic operation checks ``alg``, ``use``
-and ``key_ops``. Assigning incompatible metadata never overrides these checks.
-The sole compatibility alias is an Ed25519 OKP key's ``alg=Ed25519`` metadata,
-accepted for wire ``alg=EdDSA``. Wire ``alg=Ed25519`` is not supported upstream.
+   >>> pem = key.export_to_pem(private_key=True, password=None)
+   >>> JWK.from_pem(pem).thumbprint() == key.thumbprint()
+   True
+   >>> der = key.export_to_der(private_key=True)
+   >>> JWK.from_der(der, private=True).thumbprint() == key.thumbprint()
+   True
 
-``public()`` drops private material and unknown extension parameters, and
-retains only public operations from ``key_ops``. ``export_public()`` preserves
-operation metadata as upstream does. Consider ``public().export()`` when
-converting a key whose operation permissions include signing.
+Private PEM export now requires an explicit choice: ``password=None`` exports
+plaintext, while password bytes request encryption. Omitting the password raises
+``ValueError``. Public PEM export still needs no password argument.
 
-``repr(key)`` is redacted. Explicit exports are ordinary Python strings or
-dictionaries; Python cannot guarantee that such copies are zeroized. Do not
-log key exports. JWK thumbprints identify the public parameters (or the secret
-of an octet key); they do not grant trust.
+PEM labels select PKCS#8 private, SPKI public, PKCS#1 RSA private/public or SEC1
+EC private input. DER defaults to SPKI, or PKCS#8 with ``private=True``; explicit
+``format`` accepts ``spki``, ``pkcs8``, ``pkcs1-private``, ``pkcs1-public`` or
+``sec1``. Formats are not guessed. SEC1 must carry a supported named curve.
+PKCS#1 CRT consistency, RSA size limits and RSA-PSS-specific wrapper refusals
+remain enforced. Exports use PKCS#8/SPKI, with portable Ed25519 private encoding.
+X25519 uses JWK JSON interchange; PKCS#8/SPKI import and export are unavailable upstream.
+Composite keys use JWK JSON interchange.
 
-PEM and DER
------------
+Encrypted PKCS#8 uses the existing password arguments. ``max_iterations`` bounds
+import work (default 10,000,000). Export defaults to 600,000 iterations and
+``scheme="aes256-cbc"``; ``aes128-cbc`` is also supported. Both export schemes
+use PBKDF2-HMAC-SHA256. Import additionally accepts SHA384/SHA512 PRFs with the
+backend's supported AES-CBC schemes. PBES1, scrypt, legacy encrypted PEM, SHA-1
+PRFs and unsupported ciphers are refused without fallback.
 
-.. code-block:: python
+``from_certificate_pem`` and ``from_certificate_der`` explicitly extract an
+X.509 subject public key. They perform no signature, validity, chain or trust
+validation. A certificate chain is not accepted as a single certificate.
 
-   with open("private.pem", "rb") as stream:
-       key = JWK.from_pem(stream.read())
-   private_der = key.export_to_der(private_key=True)
-   public_der = key.export_to_der()
-   restored = JWK.from_der(private_der, private=True)
-   public_pem = key.export_to_pem()
+The complete runnable key-format example includes password encryption and
+certificate extraction; it uses the development dependency ``cryptography``
+only to generate a disposable certificate:
 
-Classical RSA, EC and Ed25519 imports accept unencrypted PKCS#8 private keys or
-SPKI public keys. Exports use those formats; Ed25519 private exports use PKCS#8
-v1 for OpenSSL interoperability. Password-encrypted PEM, PKCS#1, SEC1 and
-certificate PEM import are unsupported. Convert these formats before migration.
-RSA-PSS-specific PKCS#8 and SPKI keys are rejected, even with absent parameters,
-because generic RSA JWKs cannot preserve their PSS-only and parameter
-restrictions. This also applies to PEM wrappers. Ordinary ``rsaEncryption``
-keys remain supported with both RS* and PS* signing algorithms.
-Use JWK JSON for post-quantum interchange; upstream DER import does not cover
-AKP keys, and composite keys have no SPKI representation.
+.. literalinclude:: ../examples/key_formats.py
+   :language: python
 
-Key sets and rotation
----------------------
+Bounded key sets and rotation
+-------------------------------
 
-``JWKSet`` supports ``add``, iteration, ``get_key``, ``get_keys``, ``from_json``,
-``import_keyset`` and ``export``. Duplicate equal dictionaries are deduplicated
-by ``add``. ``get_key`` raises on multiple matches; ``get_keys`` returns all
-matching keys for rotation.
+Imports are strict and atomic. ``add`` deduplicates equal dictionaries; JSON
+imports retain duplicate entries so ambiguous identifiers remain visible.
+Defaults bound imports to 4 MiB and 1,024 entries, and selection to 64 candidate
+keys. Limits fail rather than truncating the set. ``SetLimits`` and
+``SelectionPolicy`` expose overrides.
 
-During verification, a token's protected ``kid`` selects matching keys. If any
-key in the set has a ``kid``, an unknown token ``kid`` fails without fallback.
-If the entire set is unlabelled, or the token omits ``kid``, every key can be
-tried. Set ``Validation(require_kid=True)`` and label all published keys when
-strict key selection is required. Key sets do not encode issuer trust: select
-the appropriate issuer's trusted set in the application.
+.. doctest::
+
+   >>> from pyjosers import JWKSet, SetLimits, SelectionPolicy
+   >>> keys = JWKSet(limits=SetLimits(max_entries=10), selection_policy=SelectionPolicy.strict())
+   >>> keys.add(key.public())
+   >>> keys.select("current").matched_by_kid
+   True
+   >>> keys.diagnostics()[0]["status"]
+   'usable'
+
+The default ``fallback="compat"`` retains existing behavior: a protected ``kid``
+selects a unique match; an unknown identifier fails if any key is labelled;
+a kid-less token or an entirely unlabelled set permits a bounded sweep.
+``SelectionPolicy.strict()`` requires exactly one named match.
+``fallback="unaddressable"`` permits a sweep only for entirely unlabelled sets;
+``fallback="all"`` deliberately permits unknown-identifier fallback.
+
+``JWKSet.from_json(..., strict=False)`` retains structurally valid entries with
+unsupported or invalid material for ``diagnostics()``. Diagnostics preserve
+identifiers and classify every entry as usable, unsupported or invalid. They
+never turn invalid material into a usable key or remove ambiguous matches.
+Issuer trust remains the application's responsibility.

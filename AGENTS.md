@@ -36,6 +36,10 @@ Name pytest files `test_*.py` and tests `test_*`. Add regression coverage for ch
 
 ## Commit & Pull Request Guidelines
 
+Do not create commits. Leave changes uncommitted for the human to review and
+commit, including when working in the sibling `jose-rs` and `kryptering`
+repositories.
+
 Use concise, imperative commit subjects. Pull requests should
 explain the problem, behavior changes, compatibility implications, related
 issues when applicable, and validation commands/results. Document backend
