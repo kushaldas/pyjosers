@@ -67,3 +67,9 @@ signature mismatch verdicts on verification/decryption paths. It is a coarse
 signal, not a complete detector: jose-rs 0.10.0 reports some PBES2 unwrap failures
 as ``key_material``. Always reject a failed operation regardless of category;
 do not expose fine-grained errors or password-oracle distinctions to peers.
+
+JWS reports preserve the structured category and authentication flag for each
+failed signature. Refusing an algorithm, an unknown identifier or an excessive
+candidate set does not become an authentication failure merely because no
+signature verified. Actual integrity failures retain their flag even when a
+later candidate is rejected for metadata or policy reasons.

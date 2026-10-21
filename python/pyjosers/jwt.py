@@ -290,7 +290,10 @@ class JWT:
                              validate_exp=checks is None or ("exp" in checks and checks["exp"] is None),
                              validate_nbf=checks is None or ("nbf" in checks and checks["nbf"] is None))
         options.validate(raw, header)
-        if checks is not None:
+        if checks:
+            # Compare JSON numbers in the same exact representation, recursively.
+            # Preserve original numeric expectations for exp/nbf time comparisons.
+            equality_checks = _claims_object(json_encode(checks))
             for name, expected in checks.items():
                 if name not in data:
                     raise JWTMissingClaim(f"missing claim: {name}")
@@ -321,7 +324,7 @@ class JWT:
                 elif name == "scope":
                     if not isinstance(data[name], str) or expected not in data[name].split():
                         raise JWTInvalidClaimValue("required scope is absent")
-                elif data[name] != expected:
+                elif data[name] != equality_checks[name]:
                     raise JWTInvalidClaimValue(f"claim mismatch: {name}")
         if self.validation is not None:
             self.validation.validate(raw, header)

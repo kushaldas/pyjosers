@@ -21,10 +21,9 @@ pyo3::create_exception!(_native, JWTNotYetValid, JoseError);
 pyo3::create_exception!(_native, JWTInvalidClaimValue, JoseError);
 pyo3::create_exception!(_native, UnsupportedAlgorithm, JoseError);
 
-/// Translate backend errors without exposing secret key representations.
-fn annotate_error(err: PyErr, e: &RustError) -> PyErr {
+fn category_name(e: &RustError) -> &'static str {
     use jose_rs::ErrorCategory;
-    let category = match e.category() {
+    match e.category() {
         ErrorCategory::UnsupportedCapability => "unsupported_capability",
         ErrorCategory::InvalidStructure => "invalid_structure",
         ErrorCategory::PolicyRejection => "policy_rejection",
@@ -33,7 +32,12 @@ fn annotate_error(err: PyErr, e: &RustError) -> PyErr {
         ErrorCategory::Cryptographic => "cryptographic",
         ErrorCategory::Encoding => "encoding",
         _ => "unknown",
-    };
+    }
+}
+
+/// Translate backend errors without exposing secret key representations.
+fn annotate_error(err: PyErr, e: &RustError) -> PyErr {
+    let category = category_name(e);
     Python::attach(|py| {
         let value = err.value(py);
         let _ = value.setattr("category", category);

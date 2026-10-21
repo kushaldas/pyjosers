@@ -117,6 +117,11 @@ every signature and exposes a payload only when all pass. Reports include
 ``results``, ``payload``, ``policy`` and ``satisfied``. Each result separates
 protected and unprotected headers, its index, attempted/verified flags, a
 matching ``key_index`` into the operation's selected-key list and an error.
+Failed entries retain ``category`` and ``authentication_failure`` from their
+selection or backend cause. Algorithm, key-selection and key-material refusals
+do not imply an integrity failure. When several candidates or signatures fail,
+the final exception retains the last cause, prioritizing an observed
+authentication failure over other refusals. Successful entries clear both fields.
 The key index is not an index into the original JWK Set. Selection uses each
 signature's protected ``kid`` and the configured bounded ``SelectionPolicy``.
 

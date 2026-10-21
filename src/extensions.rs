@@ -9,23 +9,34 @@ use zeroize::Zeroizing;
 #[pyfunction]
 fn capability_report() -> PyResult<String> {
     use jose_rs::capability::{self, Availability, Kind};
-    let rows: Vec<_> = capability::all().into_iter().map(|row| {
-        let (status, feature, reason) = match row.availability {
-            Availability::Supported => ("supported", None, None),
-            Availability::RequiresFeature(f) => ("requires_feature", Some(f), None),
-            Availability::RecognizedNotSupported => ("unsupported", None, None),
-            Availability::RefusedByPolicy(r) => ("refused", None, Some(r)),
-        };
-        let kind = match row.kind {
-            Kind::JwsAlgorithm => "jws", Kind::JweKeyManagement => "jwe",
-            Kind::JweContentEncryption => "encryption", Kind::KeyFormat => "format",
-            Kind::KeyType => "key",
-        };
-        json!({"kind": kind, "identifier": row.identifier, "status": status,
-            "available": row.availability.is_available(), "feature": feature,
-            "reason": reason, "operations": row.operations.iter().map(|op| op.as_str()).collect::<Vec<_>>(),
-            "note": row.note})
-    }).collect();
+    let rows: Vec<_> = capability::all()
+        .into_iter()
+        .map(|row| {
+            let (status, feature, reason) = match row.availability {
+                Availability::Supported => ("supported", None, None),
+                Availability::RequiresFeature(f) => ("requires_feature", Some(f), None),
+                Availability::RecognizedNotSupported => ("unsupported", None, None),
+                Availability::RefusedByPolicy(r) => ("refused", None, Some(r)),
+            };
+            let kind = match row.kind {
+                Kind::JwsAlgorithm => "jws",
+                Kind::JweKeyManagement => "jwe",
+                Kind::JweContentEncryption => "encryption",
+                Kind::KeyFormat => "format",
+                Kind::KeyType => "key",
+            };
+            json!({
+                "kind": kind,
+                "identifier": row.identifier,
+                "status": status,
+                "available": row.availability.is_available(),
+                "feature": feature,
+                "reason": reason,
+                "operations": row.operations.iter().map(|op| op.as_str()).collect::<Vec<_>>(),
+                "note": row.note,
+            })
+        })
+        .collect();
     json(&rows)
 }
 
@@ -219,14 +230,27 @@ fn keyset_read(
 fn keyset_diagnostics(py: Python<'_>, s: String) -> PyResult<String> {
     py.detach(move || {
         let set = jwk::JwkSet::from_json(&s).map_err(error)?;
-        let rows: Vec<_> = jwk::selection::diagnostics(&set).into_iter().map(|d| {
-            let (status, reason) = match d.status {
-                jwk::selection::EntryStatus::Usable => ("usable", None),
-                jwk::selection::EntryStatus::Unsupported { reason } => ("unsupported", Some(reason)),
-                jwk::selection::EntryStatus::Invalid { reason } => ("invalid", Some(reason)),
-            };
-            json!({"index": d.index, "kid": d.kid, "kty": d.kty, "crv": d.crv, "alg": d.alg, "status": status, "reason": reason})
-        }).collect();
+        let rows: Vec<_> = jwk::selection::diagnostics(&set)
+            .into_iter()
+            .map(|d| {
+                let (status, reason) = match d.status {
+                    jwk::selection::EntryStatus::Usable => ("usable", None),
+                    jwk::selection::EntryStatus::Unsupported { reason } => {
+                        ("unsupported", Some(reason))
+                    }
+                    jwk::selection::EntryStatus::Invalid { reason } => ("invalid", Some(reason)),
+                };
+                json!({
+                    "index": d.index,
+                    "kid": d.kid,
+                    "kty": d.kty,
+                    "crv": d.crv,
+                    "alg": d.alg,
+                    "status": status,
+                    "reason": reason,
+                })
+            })
+            .collect();
         json(&rows)
     })
 }

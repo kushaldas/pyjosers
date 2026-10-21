@@ -4,6 +4,13 @@ build:
   tools:
     python: '3.12'
     rust: '1.96'
+  jobs:
+    post_checkout:
+      # Pull requests run Sphinx in the single GitHub Actions PR job.
+      - |
+        if [ "$READTHEDOCS_VERSION_TYPE" = "external" ]; then
+          exit 183
+        fi
 sphinx:
   configuration: docs/conf.py
   fail_on_warning: true

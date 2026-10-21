@@ -45,7 +45,10 @@ A ``None`` value requires presence. ``exp``/``nbf`` with ``None`` also check
 current time. A numeric check value compares against that specified time
 without clock tolerance. ``aud`` matches at least one audience, ``scope``
 matches a whitespace-delimited scope, and ``typ`` normalizes case and an
-optional ``application/`` prefix. Other values match exactly.
+optional ``application/`` prefix. Other values match exactly. Expected JSON
+numbers use the same decimal representation as authenticated claims, including
+nested objects and arrays, so ``check_claims={"score": 0.1}`` matches JSON
+``{"score":0.1}`` without rounding more precise authenticated values.
 
 An empty ``check_claims={}`` disables compatibility time checks, while retaining
 claim type checks. ``check_claims=False`` is deliberately unsupported. A supplied

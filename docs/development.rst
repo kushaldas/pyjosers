@@ -84,7 +84,12 @@ Package verification
 A source distribution must build after extraction without either sibling project.
 A wheel should import and run tests from a fresh virtual environment.
 Keep generated extension binaries and documentation
-output out of source control. The ``.github/workflows/ci.yml`` workflow tests
+output out of source control. The ``.github/workflows/pr.yml`` workflow has one
+``PR checks`` job, running
+Python tests, executable examples, Rust formatting/linting and strict Sphinx
+checks. Branch pushes do not start another copy of CI. The full
+``.github/workflows/ci.yml`` workflow runs on pushes to ``main``, manual dispatch
+and release calls. It tests
 Python 3.10 and 3.14, Rust 1.89, minimal/PKCS#11-only/post-quantum-only/legacy
 features, executable examples, and strict documentation.
 The reusable ``wheels.yml`` workflow builds and tests manylinux x86_64 and
@@ -95,6 +100,12 @@ The Windows ARM64 job provisions statically linked ARM64 OpenSSL through
 vcpkg so that the test-only ``jwcrypto`` dependency can build ``cryptography``
 when no compatible binary wheel is available. This is not a pyjosers runtime
 dependency; the job still builds and tests a native ARM64 pyjosers wheel.
+
+Read the Docs hosts branch/tag documentation. Its repository configuration
+cancels pull-request builds before installation because Sphinx is already checked
+in the PR job. To remove the external GitHub status entirely, disable
+**Build pull requests for this project** under the project's Read the Docs
+**Settings > Pull request builds**; this setting is outside the repository.
 
 Releases
 --------

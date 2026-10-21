@@ -36,6 +36,8 @@ class SignatureResult:
     attempted: bool = False
     key_index: int | None = None
     unprotected_header: dict | None = None
+    category: str | None = None
+    authentication_failure: bool = False
 
 
 @dataclass(frozen=True)
@@ -49,6 +51,13 @@ class GeneralVerifyReport:
     def satisfied(self) -> bool:
         """Whether the requested any/all policy was satisfied."""
         return self.payload is not None
+
+
+def _prefer_failure(previous, current):
+    """Keep the last cause, but never mask an observed authentication failure."""
+    if previous is None or current.authentication_failure or not previous.authentication_failure:
+        return current
+    return previous
 
 
 class JWS:
@@ -244,7 +253,7 @@ class JWS:
                 args = (json_encode(e), detached, self.understood_crit)
                 return candidate._verify(*args) if hasattr(candidate, "_verify") else _native.verify(candidate.export(), *args)
             except _native.JoseError as exc:
-                last_error = exc
+                last_error = _prefer_failure(last_error, exc)
         failure = InvalidJWSSignature("no matching key verified the signature")
         if last_error is not None:
             failure.category = last_error.category
@@ -286,7 +295,7 @@ class JWS:
                             keys.append(candidate.export())
                         selected.append(identities[identity])
                 except _native.JoseError as exc:
-                    selection_errors[index] = str(exc)
+                    selection_errors[index] = exc
                 candidates.append(selected)
             document = {"signatures": self._entries}
             if detached is None and not self._detached:
@@ -297,17 +306,24 @@ class JWS:
             results = []
             for value in json_decode(raw_results):
                 if value["index"] in selection_errors and not value["verified"]:
-                    value["error"] = selection_errors[value["index"]]
+                    cause = selection_errors[value["index"]]
+                    value["error"] = str(cause)
+                    value["category"] = cause.category
+                    value["authentication_failure"] = cause.authentication_failure
                 results.append(SignatureResult(**value))
         else:
             # PKCS#11 objects retain their signing/verifying protocol and lifetime.
             payload = None
             results = []
             for index, entry in enumerate(self._entries):
-                attempted = policy == "all" or payload is None
+                requested = policy == "all" or payload is None
+                attempted = requested and headers[index]["alg"] in self.allowed_algs and (
+                    alg is None or headers[index]["alg"] == alg)
                 verified = False
+                category = None
+                authentication_failure = False
                 message = "not attempted: any-signature policy already satisfied"
-                if attempted:
+                if requested:
                     try:
                         value = self._verify_entry(entry, key, alg, detached_payload)
                         if payload is None:
@@ -316,8 +332,11 @@ class JWS:
                         message = None
                     except _native.JoseError as exc:
                         message = str(exc)
+                        category = exc.category
+                        authentication_failure = exc.authentication_failure
                 results.append(SignatureResult(index, headers[index], verified, message,
-                                               attempted, None, entry.get("header")))
+                                               attempted, None, entry.get("header"),
+                                               category, authentication_failure))
             if policy == "all" and not all(r.verified for r in results):
                 payload = None
         self._valid = payload is not None
@@ -358,8 +377,13 @@ class JWS:
             raise exc from cause
         if not report.satisfied:
             exc = InvalidJWSSignature("no signature verified")
-            exc.category = "authentication_failure"
-            exc.authentication_failure = True
+            cause = None
+            for result in report.results:
+                if result.category is not None:
+                    cause = _prefer_failure(cause, result)
+            if cause is not None:
+                exc.category = cause.category
+                exc.authentication_failure = cause.authentication_failure
             raise exc
 
     def verify_all(self, key, alg: str | None = None, detached_payload: bytes | str | None = None) -> list[SignatureResult]:
