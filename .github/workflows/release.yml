@@ -28,14 +28,24 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           python - <<'PY'
+          import ast
           import os
           import tomllib
           from pathlib import Path
 
           python_version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
           rust_version = tomllib.loads(Path("Cargo.toml").read_text())["package"]["version"]
-          if python_version != rust_version:
-              raise SystemExit("Python and Rust package versions disagree")
+          def literal_assignment(path, name):
+              tree = ast.parse(Path(path).read_text())
+              for node in tree.body:
+                  if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets):
+                      return ast.literal_eval(node.value)
+              raise SystemExit(f"Missing {name} in {path}")
+
+          runtime_version = literal_assignment("python/pyjosers/__init__.py", "__version__")
+          docs_version = literal_assignment("docs/conf.py", "release")
+          if len({python_version, rust_version, runtime_version, docs_version}) != 1:
+              raise SystemExit("Python, Rust, runtime and documentation versions disagree")
           if os.environ["RELEASE_REF"].startswith("refs/tags/"):
               if os.environ["RELEASE_TAG"] != f"v{python_version}":
                   raise SystemExit("Release tag must match the package version")

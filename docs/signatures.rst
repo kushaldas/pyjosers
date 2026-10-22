@@ -107,3 +107,28 @@ unprotected headers by default. To emit application-approved key references
 ``JWS(payload, allow_key_reference_headers=True)``. This also applies to
 PKCS#11 signing. ``kid``, ``x5t`` and ``x5t#S256`` do not require an opt-in.
 The option controls emission only; verification still uses the caller's key.
+
+Reports and authenticated context
+-----------------------------------
+
+``verify_report(key, policy="any")`` stops crypto after the first successful
+signature; later entries have ``attempted=False``. ``policy="all"`` attempts
+every signature and exposes a payload only when all pass. Reports include
+``results``, ``payload``, ``policy`` and ``satisfied``. Each result separates
+protected and unprotected headers, its index, attempted/verified flags, a
+matching ``key_index`` into the operation's selected-key list and an error.
+Failed entries retain ``category`` and ``authentication_failure`` from their
+selection or backend cause. Algorithm, key-selection and key-material refusals
+do not imply an integrity failure. When several candidates or signatures fail,
+the final exception retains the last cause, prioritizing an observed
+authentication failure over other refusals. Successful entries clear both fields.
+The key index is not an index into the original JWK Set. Selection uses each
+signature's protected ``kid`` and the configured bounded ``SelectionPolicy``.
+
+``verify_authenticated`` verifies once and returns an ``Authenticated`` value
+with the first successful signature's protected context. Header access returns
+copies; unprotected metadata is explicitly separate. As with ``verify``, this
+uses any-signature semantics. Use an all-policy report to require every signer.
+
+.. literalinclude:: ../examples/verification.py
+   :language: python

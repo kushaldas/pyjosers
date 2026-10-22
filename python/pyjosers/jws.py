@@ -6,7 +6,8 @@ from . import _native
 from ._native import InvalidJWSObject, InvalidJWSSignature
 from .algorithms import JWS_ALGORITHMS
 from .common import _bytes, _object, base64url_decode, base64url_encode, json_decode, json_encode
-from .jwk import JWK, _candidates
+from .jwk import JWK, JWKSet, SelectionPolicy, _candidates
+from .results import Authenticated
 
 default_allowed_algs = list(JWS_ALGORITHMS)
 
@@ -32,6 +33,31 @@ class SignatureResult:
     protected_header: dict
     verified: bool
     error: str | None = None
+    attempted: bool = False
+    key_index: int | None = None
+    unprotected_header: dict | None = None
+    category: str | None = None
+    authentication_failure: bool = False
+
+
+@dataclass(frozen=True)
+class GeneralVerifyReport:
+    """Per-signature outcomes; payload is present only when the policy succeeds."""
+    results: list[SignatureResult]
+    payload: bytes | None
+    policy: str
+
+    @property
+    def satisfied(self) -> bool:
+        """Whether the requested any/all policy was satisfied."""
+        return self.payload is not None
+
+
+def _prefer_failure(previous, current):
+    """Keep the last cause, but never mask an observed authentication failure."""
+    if previous is None or current.authentication_failure or not previous.authentication_failure:
+        return current
+    return previous
 
 
 class JWS:
@@ -45,7 +71,8 @@ class JWS:
     """
 
     def __init__(self, payload: bytes | str | None = None, header_registry=None, *, understood_crit=(),
-                 allow_key_reference_headers: bool = False):
+                 allow_key_reference_headers: bool = False,
+                 selection_policy: SelectionPolicy | None = None):
         if header_registry is not None:
             raise NotImplementedError("custom header registries are unsupported; use understood_crit")
         self._payload = None if payload is None else _bytes(payload)
@@ -57,6 +84,8 @@ class JWS:
         self.understood_crit = list(understood_crit)
         self.allow_key_reference_headers = allow_key_reference_headers
         self.verifylog: list[str] = []
+        self.selection_policy = selection_policy
+        self._authenticated = None
 
     @property
     def payload(self) -> bytes:
@@ -157,6 +186,7 @@ class JWS:
         """Replace the object from compact or JSON serialization, optionally verifying."""
         # Clear previous authenticated state before processing any new input.
         self._valid = False
+        self._authenticated = None
         self._payload = None
         self._entries = []
         self.verifylog = []
@@ -217,50 +247,151 @@ class JWS:
                 raise InvalidJWSObject("cannot supply detached payload with an attached payload")
         elif not self._detached:
             e["payload"] = base64url_encode(self._payload) if p.get("b64", True) else self._payload.decode("utf-8")
-        for candidate in _candidates(key, p):
+        last_error = None
+        for candidate in _candidates(key, p, self.selection_policy):
             try:
                 args = (json_encode(e), detached, self.understood_crit)
                 return candidate._verify(*args) if hasattr(candidate, "_verify") else _native.verify(candidate.export(), *args)
-            except _native.JoseError:
-                continue
-        raise InvalidJWSSignature("no matching key verified the signature")
+            except _native.JoseError as exc:
+                last_error = _prefer_failure(last_error, exc)
+        failure = InvalidJWSSignature("no matching key verified the signature")
+        if last_error is not None:
+            failure.category = last_error.category
+            failure.authentication_failure = last_error.authentication_failure
+        raise failure from last_error
 
-    def verify(self, key, alg: str | None = None, detached_payload: bytes | str | None = None) -> None:
-        """Authenticate at least one signature; raise if none verify.
+    def verify_report(self, key, alg: str | None = None, detached_payload: bytes | str | None = None,
+                      *, policy: str = "any") -> GeneralVerifyReport:
+        """Authenticate under an explicit any/all policy and report every signature.
 
-        Unknown ``kid`` values never select a differently labelled key.
-        Use :meth:`verify_all` if every signature must be checked.
+        Not-attempted entries are distinguished from failed cryptographic checks.
+        Key-set selection remains per signature, including protected kid matching.
         """
         self._valid = False
+        self._authenticated = None
         self.verifylog = []
-        for entry in self._entries:
-            try:
-                payload = self._verify_entry(entry, key, alg, detached_payload)
-            except _native.JoseError as exc:
-                self.verifylog.append(str(exc))
-                continue
-            if detached_payload is not None:
-                self._detached = True
+        if policy not in ("any", "all"):
+            raise ValueError("policy must be any or all")
+        if not self._entries:
+            raise InvalidJWSObject("no signatures")
+        detached = None if detached_payload is None else _bytes(detached_payload)
+        if detached is not None and not self._detached and not (self._compact_input and self._payload == b""):
+            raise InvalidJWSObject("cannot supply detached payload with an attached payload")
+        headers = [_header(e) for e in self._entries]
+        if isinstance(key, (JWK, JWKSet)):
+            keys = []
+            identities = {}
+            candidates = []
+            selection_errors = {}
+            for index, header in enumerate(headers):
+                selected = []
+                try:
+                    if header["alg"] not in self.allowed_algs or (alg is not None and header["alg"] != alg):
+                        raise InvalidJWSSignature("algorithm is not allowed")
+                    for candidate in _candidates(key, header, self.selection_policy):
+                        identity = id(candidate)
+                        if identity not in identities:
+                            identities[identity] = len(keys)
+                            keys.append(candidate.export())
+                        selected.append(identities[identity])
+                except _native.JoseError as exc:
+                    selection_errors[index] = exc
+                candidates.append(selected)
+            document = {"signatures": self._entries}
+            if detached is None and not self._detached:
+                document["payload"] = (base64url_encode(self._payload) if headers[0].get("b64", True)
+                                       else self._payload.decode("utf-8"))
+            payload, raw_results = _native.verify_batch(keys, json_encode(document), detached,
+                                                        self.understood_crit, candidates, policy == "all")
+            results = []
+            for value in json_decode(raw_results):
+                if value["index"] in selection_errors and not value["verified"]:
+                    cause = selection_errors[value["index"]]
+                    value["error"] = str(cause)
+                    value["category"] = cause.category
+                    value["authentication_failure"] = cause.authentication_failure
+                results.append(SignatureResult(**value))
+        else:
+            # PKCS#11 objects retain their signing/verifying protocol and lifetime.
+            payload = None
+            results = []
+            for index, entry in enumerate(self._entries):
+                requested = policy == "all" or payload is None
+                attempted = requested and headers[index]["alg"] in self.allowed_algs and (
+                    alg is None or headers[index]["alg"] == alg)
+                verified = False
+                category = None
+                authentication_failure = False
+                message = "not attempted: any-signature policy already satisfied"
+                if requested:
+                    try:
+                        value = self._verify_entry(entry, key, alg, detached_payload)
+                        if payload is None:
+                            payload = value
+                        verified = True
+                        message = None
+                    except _native.JoseError as exc:
+                        message = str(exc)
+                        category = exc.category
+                        authentication_failure = exc.authentication_failure
+                results.append(SignatureResult(index, headers[index], verified, message,
+                                               attempted, None, entry.get("header"),
+                                               category, authentication_failure))
+            if policy == "all" and not all(r.verified for r in results):
+                payload = None
+        self._valid = payload is not None
+        self.verifylog = ["Success" if r.verified else r.error for r in results]
+        if self._valid:
             self._payload = payload
-            self._valid = True
-            self.verifylog.append("Success")
-            return
-        raise InvalidJWSSignature("no signature verified")
+            if detached is not None:
+                self._detached = True
+            first = next(r for r in results if r.verified)
+            self._authenticated = Authenticated._from_verified(
+                payload, first.protected_header,
+                () if first.unprotected_header is None else (first.unprotected_header,))
+        return GeneralVerifyReport(results, payload, policy)
+
+    def verify(self, key, alg: str | None = None, detached_payload: bytes | str | None = None) -> None:
+        """Authenticate at least one signature, raising if none verify."""
+        self._valid = False
+        self._authenticated = None
+        self.verifylog = []
+        try:
+            # The ordinary one-key, one-signature path needs no general report.
+            if isinstance(key, JWK) and len(self._entries) == 1:
+                payload = self._verify_entry(self._entries[0], key, alg, detached_payload)
+                entry = self._entries[0]
+                self._authenticated = Authenticated._from_verified(
+                    payload, _header(entry), () if "header" not in entry else (entry["header"],))
+                self._payload = payload
+                self._valid = True
+                if detached_payload is not None:
+                    self._detached = True
+                self.verifylog.append("Success")
+                return
+            report = self.verify_report(key, alg, detached_payload)
+        except _native.JoseError as cause:
+            exc = InvalidJWSSignature(str(cause))
+            exc.category = cause.category
+            exc.authentication_failure = cause.authentication_failure
+            raise exc from cause
+        if not report.satisfied:
+            exc = InvalidJWSSignature("no signature verified")
+            cause = None
+            for result in report.results:
+                if result.category is not None:
+                    cause = _prefer_failure(cause, result)
+            if cause is not None:
+                exc.category = cause.category
+                exc.authentication_failure = cause.authentication_failure
+            raise exc
 
     def verify_all(self, key, alg: str | None = None, detached_payload: bytes | str | None = None) -> list[SignatureResult]:
-        """Return a result for each signature; ``is_valid`` requires all to succeed."""
-        self._valid = False
-        results = []
-        payload = None
-        for index, entry in enumerate(self._entries):
-            try:
-                payload = self._verify_entry(entry, key, alg, detached_payload)
-                results.append(SignatureResult(index, _header(entry), True))
-            except _native.JoseError as exc:
-                results.append(SignatureResult(index, _header(entry), False, str(exc)))
-        self._valid = bool(results) and all(r.verified for r in results)
-        if self._valid:
-            if detached_payload is not None:
-                self._detached = True
-            self._payload = payload
-        return results
+        """Return each result; payload is trusted only when every signature verifies."""
+        return self.verify_report(key, alg, detached_payload, policy="all").results
+
+    def verify_authenticated(self, key, alg: str | None = None,
+                             detached_payload: bytes | str | None = None) -> Authenticated[bytes]:
+        """Verify once and return the first successful signature's protected context."""
+        self.verify(key, alg, detached_payload)
+        return self._authenticated

@@ -2,7 +2,7 @@
 project = "pyjosers"
 author = "Kushal Das"
 copyright = "2026, Kushal Das"
-release = "0.1.0"
+release = "0.2.0"
 extensions = ["sphinx.ext.autodoc", "sphinx.ext.napoleon", "sphinx.ext.doctest"]
 html_theme = "furo"
 exclude_patterns = ["_build"]

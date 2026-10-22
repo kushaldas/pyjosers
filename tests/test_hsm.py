@@ -21,7 +21,7 @@ def test_softhsm(tmp_path, rsa_key):
     env = {**os.environ, "SOFTHSM2_CONF": str(conf)}
     subprocess.run(["softhsm2-util", "--init-token", "--free", "--label", "pyjosers-test", "--so-pin", "12345678", "--pin", "1234"], env=env, check=True, capture_output=True)
     pem = tmp_path / "rsa.pem"
-    pem.write_bytes(rsa_key.export_to_pem(private_key=True))
+    pem.write_bytes(rsa_key.export_to_pem(private_key=True, password=None))
     pem.chmod(0o600)
     subprocess.run(["softhsm2-util", "--import", str(pem), "--token", "pyjosers-test", "--label", "signing", "--id", "01", "--pin", "1234"], env=env, check=True, capture_output=True)
     secret = tmp_path / "hmac.bin"
@@ -31,7 +31,7 @@ def test_softhsm(tmp_path, rsa_key):
     # A child interpreter avoids global PKCS#11 initialization affecting other tests.
     script = '''
 import gc, json, sys
-from pyjosers import JWK, JWS, JWT, JoseError
+from pyjosers import JWK, JWS, JWT, JoseError, is_authentication_failure
 from pyjosers.hsm import Pkcs11Provider, Pkcs11Signer, Pkcs11Verifier
 provider = Pkcs11Provider.with_token(sys.argv[1], "pyjosers-test")
 assert provider.slot_id >= 0
@@ -45,6 +45,27 @@ for alg, label in [("RS256", "signing"), ("PS256", "signing"), ("HS256", "hmac")
     parsed = JWS.from_jose_token(obj.serialize())
     parsed.verify(verifier)
     assert parsed.payload == b"payload"
+    parsed.allowed_algs = []
+    report = parsed.verify_report(verifier)
+    assert not report.results[0].attempted
+    assert not report.results[0].authentication_failure
+    try:
+        parsed.verify(verifier)
+    except JoseError as error:
+        assert not is_authentication_failure(error)
+        assert not parsed.is_valid
+    else:
+        raise AssertionError("an empty allowlist must refuse verification")
+    changed = json.loads(obj.serialize())
+    changed["payload"] = "dGFtcGVyZWQ"
+    tampered = JWS.from_jose_token(json.dumps(changed))
+    try:
+        tampered.verify(verifier)
+    except JoseError as error:
+        assert is_authentication_failure(error)
+        assert not tampered.is_valid
+    else:
+        raise AssertionError("a changed payload must not authenticate")
     restricted = JWS(b"header policy")
     try:
         restricted.add_signature(signer, protected={"alg": alg, "x5c": ["Y2VydA=="]})

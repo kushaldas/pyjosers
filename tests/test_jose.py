@@ -5,7 +5,7 @@ import pytest
 from pyjosers import JWK, JWKSet, JWS, JWE, JWT, Validation, JoseError, POST_QUANTUM
 from pyjosers import jwt, x509
 from pyjosers.algorithms import JWS_ALGORITHMS
-from pyjosers.common import base64url_encode, json_decode
+from pyjosers.common import json_encode, base64url_encode, json_decode
 from pyjosers.jws import InvalidJWSSignature, InvalidJWSObject
 from pyjosers.jwe import InvalidJWEData
 from pyjosers.jwt import JWTExpired, JWTMissingClaim
@@ -253,7 +253,9 @@ def test_malformed_input_limits(key):
 
 @pytest.mark.parametrize("claim,value", [("exp", True), ("iat", "123"), ("nbf", -1), ("sub", None), ("aud", [42])])
 def test_claim_type_checks(key, claim, value):
-    token = jwt.encode(key, {claim: value}, algorithm="ES256")
+    peer = JWS(json_encode({claim: value}))
+    peer.add_signature(key, protected={"alg": "ES256"})
+    token = peer.serialize(compact=True)
     with pytest.raises(JoseError):
         JWT(jwt=token, key=key)
 

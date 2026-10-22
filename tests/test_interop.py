@@ -39,16 +39,24 @@ def test_jws_both_directions(signing_keys, alg, compact):
 @pytest.mark.parametrize("alg", JWE_ALGORITHMS)
 @pytest.mark.parametrize("enc", JWE_ENCRYPTIONS)
 def test_jwe_both_directions(rsa_key, alg, enc):
-    size = CEK_BITS[enc] if alg == "dir" else {"A128KW": 128, "A192KW": 192, "A256KW": 256}.get(alg, 256)
-    key = rsa_key if alg.startswith("RSA") else JWK.generate(kty="oct", size=size)
-    other = old_jwk.JWK.from_json(key.export())
+    if alg.startswith("PBES2-"):
+        key = other = b"disposable test password"
+    else:
+        if alg.startswith("RSA"):
+            key = rsa_key
+        elif alg.startswith("ECDH-ES"):
+            key = JWK.generate(kty="EC", crv="P-256", alg=alg)
+        else:
+            size = CEK_BITS[enc] if alg == "dir" else int(alg[1:4])
+            key = JWK.generate(kty="oct", size=size)
+        other = old_jwk.JWK.from_json(key.export())
     payload = b"encrypted\x00\xffdata"
     header = {"alg": alg, "enc": enc, "typ": "application/example", "kid": "one"}
     ours = JWE(payload, protected=header, recipient=key)
     theirs = old_jwe.JWE()
     theirs.deserialize(ours.serialize(True), other)
     assert theirs.payload == payload
-    assert theirs.jose_header == header
+    assert all(theirs.jose_header[name] == value for name, value in header.items())
     theirs = old_jwe.JWE(payload, protected=header, recipient=other)
     ours = JWE()
     ours.deserialize(theirs.serialize(True), key)
@@ -79,7 +87,7 @@ def test_pem_and_thumbprints(signing_keys, kind):
     other = old_jwk.JWK.from_json(key.export())
     assert key.thumbprint() == other.thumbprint()
     for private in (True, False):
-        pem = key.export_to_pem(private_key=private)
+        pem = key.export_to_pem(private_key=private, password=None)
         imported = old_jwk.JWK.from_pem(pem)
         assert imported.thumbprint() == key.thumbprint()
         theirs = other.export_to_pem(private_key=private, password=None)

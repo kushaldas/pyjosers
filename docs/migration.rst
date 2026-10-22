@@ -53,10 +53,10 @@ Supported patterns
      - Supported; read with ``expected_type="JWE"``
    * - ``JWS`` compact/flattened/general and detached signatures
      - Supported with protected algorithm and identifier headers
-   * - ``JWE`` compact/flattened, protected headers, one recipient
-     - Supported
+   * - ``JWE`` compact/flattened/general, AAD and multiple recipients
+     - Supported within the restrictions in :doc:`encryption`
    * - ``from_pem`` / ``export_to_pem``
-     - Unencrypted classical PKCS#8 and SPKI only
+     - PKCS#8/SPKI, PKCS#1/SEC1 input and password-encrypted PKCS#8
 
 Inmor admin migration
 ---------------------
@@ -95,10 +95,13 @@ For example, its federation signing workflow can remain:
        return token.serialize()
 
 ``datetime.timestamp()`` values retain their fractional seconds in serialized
-and returned claims. Time validation follows jose-rs's whole-second semantics.
+and returned claims. Time validation now preserves nanosecond precision rather
+than flooring dates; unsupported precision is rejected. Original JSON claim
+text is retained, but Python float values cannot recover precision already lost.
 Ed25519 keys labelled ``alg=Ed25519`` are accepted with an ``EdDSA`` protected
 header without rewriting the persisted JSON key. The algorithm alias is
-restricted to OKP Ed25519 keys.
+restricted to OKP Ed25519 keys. Explicit ``alg=Ed25519`` wire headers are now
+supported too; allowlists distinguish that name from ``EdDSA``.
 
 The current admin tests also expect **Ed448** keys. Standalone Ed448 is not
 implemented by jose-rs and cannot migrate by an import change. Keep that path
@@ -131,14 +134,14 @@ fetch embedded ``jwks_uri``, ``jku`` or ``x5u`` URLs.
 Intentional differences
 -----------------------
 
-* Standalone Ed448, secp256k1, X25519/X448, ECDH-ES, PBES2, RSA1_5, JWE
-  compression, multiple recipients and external AAD are unsupported.
+* Standalone Ed448, secp256k1, X448, RSA1_5 and JWE compression remain
+  unsupported. X25519, ECDH-ES, PBES2, GCMKW, AAD and general JWE are supported.
 * SHA-1 RSA-OAEP needs an explicit ``legacy`` build. Unsigned tokens remain
   unavailable.
 * Key exports default to including private data for API compatibility, but
   public export drops unknown extension members and rejects symmetric keys.
-* PEM password encryption, certificate import, cryptography-object access
-  (``get_op_key``), arbitrary hash objects for thumbprints, custom algorithm
+* Cryptography-object access (``get_op_key``), arbitrary hash objects for
+  thumbprints, custom algorithm
   registration, and jwcrypto header registries are unsupported.
 * ``alg``, ``kid``, ``crit`` and ``b64`` must be protected in JWS. JSON duplicate
   members, noncanonical base64url, non-finite numbers and oversized tokens
@@ -177,3 +180,24 @@ admin checkout, without importing Django settings or reading application keys::
 This optional test compiles only those two function definitions with pyjosers
 imports and generated keys. It does not replace running the complete admin
 application test suite as part of its eventual migration.
+
+Changes from pyjosers 0.1
+---------------------------
+
+* Private PEM export requires ``password=None`` for plaintext or password bytes
+  for encrypted PKCS#8. The omitted-password case now raises ``ValueError``.
+* JWKS defaults bound imports to 4 MiB and 1,024 entries and candidate sweeps to
+  64 keys. Explicit ``SetLimits`` / ``SelectionPolicy`` overrides support larger
+  deployments. Matching/fallback behavior remains compatible within these bounds.
+* Checked claim JSON is required at creation as well as validation. Invalid
+  registered types, duplicate names and invalid dates fail early.
+* ``JWT.serialize`` emits compact form. ``strict_serialization=True`` optionally
+  refuses JSON JWT input; default parsing retains existing JSON compatibility.
+* ``JWE.add_recipient`` stages recipients; encryption happens once during
+  serialization. Material and crypto failures can therefore surface at that point.
+* JWCrypto's ECDH permission convention differs: jose-rs enforces ``deriveKey``. Peer interchange may need separately authorized metadata
+  with the same key material; operation checks remain enforced.
+
+Authenticated result APIs are additive. Existing ``verify``, ``decrypt`` and
+``validate`` workflows remain available. Default builds still enable PKCS#11 and
+post-quantum support, with legacy SHA-1 RSA-OAEP opt-in only.
