@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 - 2026-10-21
+## 0.2.0 - 2026-10-22
 
 - Use published jose-rs 0.10.0, Kryptering 0.7 and PyO3 0.30.1; remove the
   temporary sibling dependency and synchronize package/runtime/docs versions.
