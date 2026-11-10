@@ -1,7 +1,7 @@
-jose-rs 0.10 integration
+jose-rs 0.11 integration
 ==========================
 
-pyjosers 0.2.0 uses the published jose-rs 0.10.0, Kryptering 0.7 and PyO3
+pyjosers 0.3.0 uses the published jose-rs 0.11.0, Kryptering 0.7.1 and PyO3
 0.30.1 releases. No sibling checkout, vendored backend or unpublished patch is
 required. Cargo's lockfile records registry sources and checksums. PKCS#8 0.11
 and the cryptographic trait dependencies follow Kryptering's coordinated family;
@@ -71,7 +71,7 @@ operation; an unrestricted union of a key set is never substituted for those
 selections. Authenticated metadata is returned from the same successful operation,
 without a second verification or decryption.
 
-jose-rs 0.10.0's JSON writer emits the mandatory empty ``ciphertext`` string for
+The backend's JSON writer emits the mandatory empty ``ciphertext`` string for
 empty GCM plaintext, but its parser incorrectly rejects that empty string.
 The binding validates the entire JSON envelope using a nonempty placeholder for
 that one value, then restores the original empty ciphertext **before** any

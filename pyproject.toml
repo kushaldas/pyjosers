@@ -1,10 +1,10 @@
 [build-system]
-requires = ["maturin>=1.9,<2"]
+requires = ["maturin>=1.16,<2"]
 build-backend = "maturin"
 
 [project]
 name = "pyjosers"
-version = "0.2.0"
+version = "0.3.0"
 description = "Rust-backed JOSE with a familiar jwcrypto-style Python API"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -16,8 +16,13 @@ Documentation = "https://pyjosers.readthedocs.org/"
 Repository = "https://github.com/kushaldas/pyjosers"
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "jwcrypto>=1.5.6", "sphinx>=8", "furo", "maturin>=1.9,<2"]
-docs = ["sphinx>=8", "furo"]
+dev = ["pytest>=9.2", "jwcrypto>=1.6.1", "pyjosers[docs]", "maturin>=1.16,<2"]
+docs = [
+    "sphinx>=9.2; python_version >= '3.13'",
+    "sphinx>=8.2.3,<9; python_version >= '3.11' and python_version < '3.13'",
+    "sphinx>=7.4.7,<8; python_version < '3.11'",
+    "furo>=2025.12.19",
+]
 
 [tool.maturin]
 python-source = "python"
