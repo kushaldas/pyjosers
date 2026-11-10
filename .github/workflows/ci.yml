@@ -81,7 +81,7 @@ jobs:
           FEATURE_ARGS: ${{ matrix.args }}
         run: |
           python -m pip install --upgrade uv
-          uv pip install --system 'maturin>=1.9,<2' pytest jwcrypto
+          uv pip install --system 'maturin>=1.16,<2' pytest jwcrypto
           # Deliberately split the fixed flags from the workflow matrix.
           maturin build --locked $FEATURE_ARGS --out dist
           uv pip install --system --no-index --find-links dist pyjosers

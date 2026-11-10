@@ -111,7 +111,7 @@ Releases
 --------
 
 ``release.yml`` checks that Cargo, Python metadata, runtime and documentation
-versions agree and that a release tag matches their version (``v0.2.0``). It runs the complete CI workflow before publishing the tested
+versions agree and that a release tag matches their version (``v0.3.0``). It runs the complete CI workflow before publishing the tested
 wheels and source distribution, and checks ``Cargo.lock`` with
 ``cargo metadata --locked`` before starting the build matrix.
 Manual dispatch on a branch builds and tests

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0 - 2026-11-10
+
+- Synchronize package, runtime and documentation versions at 0.3.0.
+- Refresh the Rust lockfile and dependency minimums; retain PyO3 0.30.1.
+- Upgrade to published jose-rs 0.11.0, Kryptering 0.7.1 and stable RSA 0.10.0,
+  removing the RSA prerelease dependency and its upgrade blocker.
+- Update maturin, pytest, jwcrypto and documentation tooling. Select Sphinx by
+  Python version so development extras remain installable on Python 3.10+.
+
 ## 0.2.0 - 2026-10-22
 
 - Use published jose-rs 0.10.0, Kryptering 0.7 and PyO3 0.30.1; remove the

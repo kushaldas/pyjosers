@@ -1,6 +1,6 @@
 [package]
 name = "pyjosers"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 rust-version = "1.89"
 resolver = "3"
@@ -27,9 +27,9 @@ legacy = ["jose-rs/deprecated"]
 
 [dependencies]
 pyo3 = { version = "=0.30.1", features = ["extension-module", "abi3-py310"] }
-jose-rs = { version = "=0.10.0", default-features = false }
-kryptering = { version = "0.7", default-features = false, features = ["rustcrypto"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["arbitrary_precision", "raw_value"] }
-pkcs8 = "0.11"
-zeroize = "1"
+jose-rs = { version = "=0.11.0", default-features = false }
+kryptering = { version = "0.7.1", default-features = false, features = ["rustcrypto"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.154", features = ["arbitrary_precision", "raw_value"] }
+pkcs8 = "0.11.0"
+zeroize = "1.9.1"

@@ -14,7 +14,7 @@ print(verified.claims)
 
 Development:
 
-Release 0.2.0 uses published crates.io `jose-rs =0.10.0`, Kryptering 0.7,
+Release 0.3.0 uses published crates.io `jose-rs =0.11.0`, Kryptering 0.7.1,
 and `pyo3 =0.30.1`. Wheels and source builds need no sibling checkout.
 See `docs/backend-0100.rst` for coverage and backend limitations.
 
