@@ -6,7 +6,7 @@ Generation and metadata
 
 ``JWK.generate`` uses bit sizes and standard JOSE names. RSA defaults to 2048
 bits; supported RSA sizes are 2048 through 8192 bits, with exponent 65537.
-EC requires P-256, P-384 or P-521. OKP supports Ed25519 and X25519. AKP generation
+EC requires P-256, P-384 or P-521. OKP supports Ed25519, Ed448 and X25519. AKP generation
 requires a post-quantum build and an explicit ML-DSA/composite algorithm.
 Octet sizes are inferred from HMAC/AES algorithm names, otherwise defaulting to
 256 bits. Explicit sizes still undergo operation checks.
@@ -24,8 +24,10 @@ Octet sizes are inferred from HMAC/AES algorithm names, otherwise defaulting to
 Mapping mutations are validated when a key is next used. ``alg``, ``use`` and
 ``key_ops`` are enforced for every operation. ``public()`` removes private-only
 operations and retains agreement operations for EC/X25519 keys.
-The compatibility alias accepts Ed25519-key ``alg=Ed25519`` metadata with an
-``EdDSA`` wire header. The reverse alias is refused; allowlists distinguish them.
+Ed25519 and Ed448 signing keys accept either an ``EdDSA`` pin or the name of
+their own curve. Either spelling can appear in the signed header. Algorithm
+allowlists compare the exact wire name. Ed448 supports PKCS#8 private and SPKI
+public keys in DER or PEM, and RFC 7638 thumbprints.
 
 ``export()`` includes private material by default for JWCrypto compatibility.
 Use ``export_public()`` or ``public().export()`` for public interchange. Symmetric

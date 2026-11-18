@@ -29,8 +29,8 @@ Signatures
      - ES256, ES384, ES512
      - EC P-256, P-384, P-521 respectively
    * - EdDSA
-     - EdDSA, Ed25519
-     - OKP Ed25519 only
+     - EdDSA, Ed25519, Ed448
+     - OKP Ed25519 or Ed448 (pure Ed448, empty context)
    * - ML-DSA
      - ML-DSA-44, ML-DSA-65, ML-DSA-87
      - AKP; requires post-quantum feature

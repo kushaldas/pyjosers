@@ -99,6 +99,7 @@ fn key_generate(
             "RSA" => jwk::generate_rsa(size),
             "EC" => jwk::generate_ec(&crv),
             "OKP" if crv == "Ed25519" => jwk::generate_ed25519(),
+            "OKP" if crv == "Ed448" => jwk::generate_ed448(),
             "OKP" if crv == "X25519" => jwk::generate_x25519(),
             "oct" if size > 0 && size.is_multiple_of(8) => jwk::generate_symmetric(size / 8),
             #[cfg(feature = "post-quantum")]
@@ -202,23 +203,17 @@ fn signature_key(
     header: &JoseHeader,
     op: jwk::JwkOp,
 ) -> PyResult<(kryptering::SignatureAlgorithm, kryptering::SoftwareKey)> {
-    let k = signature_jwk(s, header)?;
+    let k = key(s)?;
     let alg = JwsAlgorithm::from_str(&header.alg).map_err(error)?;
     let material = jwk::jwk_to_signature_key(&k, alg, op).map_err(error)?;
-    Ok((alg.to_crypto().map_err(error)?, material))
-}
-fn signature_jwk(s: &str, header: &JoseHeader) -> PyResult<jwk::Jwk> {
-    let mut k = key(s)?;
-    // Preserve the existing one-way metadata alias only for the EdDSA wire
-    // name. Explicit Ed25519 headers retain exact backend algorithm pinning.
-    if header.alg == "EdDSA"
-        && k.kty == "OKP"
-        && k.crv.as_deref() == Some("Ed25519")
-        && k.alg.as_deref() == Some("Ed25519")
-    {
-        k.alg = Some("EdDSA".into());
-    }
-    Ok(k)
+    // The batch verifier takes a concrete primitive. The JWK operation above
+    // has already checked the curve, algorithm pin and permitted key use.
+    let primitive = if alg == JwsAlgorithm::EdDSA && k.crv.as_deref() == Some("Ed448") {
+        kryptering::SignatureAlgorithm::Ed448
+    } else {
+        alg.to_crypto().map_err(error)?
+    };
+    Ok((primitive, material))
 }
 /// Sign a flattened JWS, including detached and RFC 7797 payload modes.
 // Keep the native signature aligned with the Python/PKCS#11 signing protocol.
@@ -237,7 +232,7 @@ fn sign(
 ) -> PyResult<String> {
     py.detach(move || {
         let header: JoseHeader = parse(&protected)?;
-        let mut k = signature_jwk(&s, &header)?;
+        let mut k = key(&s)?;
         // A caller-selected protected algorithm binds an unpinned compatibility key.
         if k.alg.is_none() {
             k.alg = Some(header.alg.clone());
@@ -288,10 +283,7 @@ fn verify(
             return Err(InvalidJWSObject::new_err("token too large"));
         }
         let jws: jose_rs::jws::json::FlattenedJws = parse(&token)?;
-        let header: JoseHeader =
-            serde_json::from_slice(&jose_rs::base64url::decode(&jws.protected).map_err(error)?)
-                .map_err(|_| InvalidJWSObject::new_err("invalid protected header"))?;
-        let k = signature_jwk(&s, &header)?;
+        let k = key(&s)?;
         jose_rs::jws::json::verify_flattened_with_jwk_opts(
             &k,
             &jws,

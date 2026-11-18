@@ -71,7 +71,7 @@ HSM operations skip when their corresponding feature is unavailable.
 Updating the upstream dependencies
 ----------------------------------
 
-jose-rs 0.10.0, Kryptering 0.7 and PyO3 0.30.1 are registry dependencies.
+jose-rs 0.12.0, Kryptering 0.7.1 and PyO3 0.30.1 are registry dependencies.
 Sibling checkouts are useful for inspection only; do not vendor them or add a
 path dependency to a release. Review the backend capability report, operation
 restrictions and cryptographic trait family before changing versions. Update the
@@ -111,7 +111,7 @@ Releases
 --------
 
 ``release.yml`` checks that Cargo, Python metadata, runtime and documentation
-versions agree and that a release tag matches their version (``v0.3.0``). It runs the complete CI workflow before publishing the tested
+versions agree and that a release tag matches their version (``v0.4.0``). It runs the complete CI workflow before publishing the tested
 wheels and source distribution, and checks ``Cargo.lock`` with
 ``cargo metadata --locked`` before starting the build matrix.
 Manual dispatch on a branch builds and tests

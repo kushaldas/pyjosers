@@ -27,7 +27,8 @@ def test_actual_admin_functions():
     signing = _load_function(root / "common/signing.py", "create_signed_jwt", namespace)
     validate = _load_function(root / "entities/lib.py", "self_validate", namespace)
     for params, alg in [({"kty": "EC", "crv": "P-256"}, "ES256"),
-                        ({"kty": "OKP", "crv": "Ed25519"}, "Ed25519")]:
+                        ({"kty": "OKP", "crv": "Ed25519"}, "Ed25519"),
+                        ({"kty": "OKP", "crv": "Ed448"}, "Ed448")]:
         key = jwk.JWK.generate(**params, alg=alg)
         keys = jwk.JWKSet()
         keys.add(key)

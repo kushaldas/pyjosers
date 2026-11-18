@@ -1,7 +1,8 @@
 """JWT compatibility objects, complete Rust validation policy, and nested tokens."""
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from collections.abc import Callable
+from dataclasses import asdict, dataclass, field, replace
 from decimal import Decimal
 import json
 import time
@@ -10,7 +11,7 @@ import uuid
 from . import _native, jwe, jws
 from ._native import JWTExpired, JWTNotYetValid, JWTInvalidClaimValue
 from .common import _object, _pairs, json_decode, json_encode
-from .jwk import SelectionPolicy
+from .jwk import JWKSet, SelectionPolicy
 from .results import Authenticated
 
 
@@ -64,6 +65,23 @@ class Validation:
     require_nbf: bool = False
     require_iat: bool = False
     require_kid: bool = False
+
+    @classmethod
+    def signature_only(cls) -> Validation:
+        """Disable exp, nbf and future-iat checks. Signatures are still required."""
+        return cls(validate_exp=False, validate_nbf=False, validate_iat_not_future=False)
+
+    def without_exp(self) -> Validation:
+        """Return a policy copy accepting expired tokens; retain required-claim checks."""
+        return replace(self, validate_exp=False, allowed_algorithms=list(self.allowed_algorithms))
+
+    def without_nbf(self) -> Validation:
+        """Return a policy copy accepting tokens before their validity window."""
+        return replace(self, validate_nbf=False, allowed_algorithms=list(self.allowed_algorithms))
+
+    def without_iat_future_check(self) -> Validation:
+        """Return a policy copy disabling the future-iat check; retain max_age."""
+        return replace(self, validate_iat_not_future=False, allowed_algorithms=list(self.allowed_algorithms))
 
     def validate(self, claims: dict | str, header: dict | str) -> None:
         """Validate already-authenticated claims and their protected header."""
@@ -330,7 +348,9 @@ class JWT:
             self.validation.validate(raw, header)
         self._header = json_encode(header)
         self._claims = raw
-        self._authenticated = Authenticated._from_verified_json(raw, header, self.token._authenticated.unprotected)
+        self._authenticated = Authenticated._from_verified_json(
+            raw, header, self.token._authenticated.unprotected,
+            verified_key_index=self.token._authenticated.verified_key_index)
 
     def validate_authenticated(self, key) -> Authenticated[dict]:
         """Authenticate and validate claims once, returning their protected context."""
@@ -338,7 +358,7 @@ class JWT:
         return self._authenticated
 
 
-def encode(key, claims: dict, *, algorithm: str, headers: dict | None = None,
+def encode(key, claims: dict | str | bytes, *, algorithm: str, headers: dict | None = None,
            allow_key_reference_headers: bool = False, understood_crit=()) -> str:
     """Sign a compact JWT. ``algorithm`` is an explicit caller choice.
 
@@ -419,3 +439,48 @@ def decode_authenticated(token: str, key, *, validation: Validation | None = Non
               check_claims={}, selection_policy=selection_policy, understood_crit=understood_crit,
               strict_serialization=strict_serialization)
     return obj._authenticated
+
+
+class UnverifiedJwt:
+    """Inspect a compact signed JWT for candidate keys. Its contents are untrusted."""
+
+    __slots__ = ("_wire", "_header", "_claims")
+
+    def __init__(self, token: str):
+        self._header, self._claims = _native.inspect_jwt(token)
+        self._wire = token
+
+    @property
+    def header(self) -> dict:
+        """Return a fresh copy of the untrusted protected header."""
+        return json.loads(self._header, parse_float=Decimal)
+
+    @property
+    def claims(self) -> dict:
+        """Return untrusted discovery claims, preserving exact decimal values."""
+        return _claims_object(self._claims)
+
+    def verify_with(self, keys: JWKSet, *, validation: Validation | None = None,
+                    selection_policy: SelectionPolicy | None = None) -> Authenticated[dict]:
+        """Authenticate the original compact token with bounded JWK Set selection."""
+        if not isinstance(keys, JWKSet):
+            raise TypeError("expected a JWKSet")
+        if selection_policy is None:
+            selection_policy = keys.selection_policy
+            if selection_policy.fallback == "compat":
+                # Match jose-rs discovery defaults while retaining the set's limits.
+                selection_policy = replace(selection_policy, fallback="unaddressable")
+        return decode_authenticated(self._wire, keys, validation=validation,
+                                    selection_policy=selection_policy, strict_serialization=True)
+
+
+def decode_self_signed(token: str, select_keys: Callable[[dict], JWKSet], *,
+                       validation: Validation | None = None,
+                       selection_policy: SelectionPolicy | None = None) -> Authenticated[dict]:
+    """Select keys once from untrusted claims and verify the original compact JWT.
+
+    Signature verification proves possession. The caller establishes issuer trust.
+    """
+    inspected = UnverifiedJwt(token)
+    return inspected.verify_with(select_keys(inspected.claims), validation=validation,
+                                 selection_policy=selection_policy)

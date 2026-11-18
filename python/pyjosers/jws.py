@@ -277,6 +277,7 @@ class JWS:
         detached = None if detached_payload is None else _bytes(detached_payload)
         if detached is not None and not self._detached and not (self._compact_input and self._payload == b""):
             raise InvalidJWSObject("cannot supply detached payload with an attached payload")
+        set_positions = None
         headers = [_header(e) for e in self._entries]
         if isinstance(key, (JWK, JWKSet)):
             keys = []
@@ -297,6 +298,11 @@ class JWS:
                 except _native.JoseError as exc:
                     selection_errors[index] = exc
                 candidates.append(selected)
+            # Snapshot original positions before native verification releases the GIL.
+            # SignatureResult.key_index retains its selected-list meaning.
+            if isinstance(key, JWKSet):
+                positions = {id(candidate): i for i, candidate in enumerate(key)}
+                set_positions = [positions[identity] for identity in identities]
             document = {"signatures": self._entries}
             if detached is None and not self._detached:
                 document["payload"] = (base64url_encode(self._payload) if headers[0].get("b64", True)
@@ -348,7 +354,8 @@ class JWS:
             first = next(r for r in results if r.verified)
             self._authenticated = Authenticated._from_verified(
                 payload, first.protected_header,
-                () if first.unprotected_header is None else (first.unprotected_header,))
+                () if first.unprotected_header is None else (first.unprotected_header,),
+                verified_key_index=set_positions[first.key_index] if set_positions is not None else None)
         return GeneralVerifyReport(results, payload, policy)
 
     def verify(self, key, alg: str | None = None, detached_payload: bytes | str | None = None) -> None:

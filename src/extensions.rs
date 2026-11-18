@@ -255,6 +255,13 @@ fn keyset_diagnostics(py: Python<'_>, s: String) -> PyResult<String> {
     })
 }
 
+/// Inspect a bounded compact JWT before exposing any discovery hints.
+#[pyfunction]
+fn inspect_jwt(token: &str) -> PyResult<(String, String)> {
+    let inspected = jose_rs::jwt::UnverifiedJwt::parse(token).map_err(error)?;
+    Ok((json(inspected.header())?, json(inspected.claims())?))
+}
+
 #[pyfunction]
 fn claims_check(s: &str) -> PyResult<()> {
     jose_rs::jwt::Claims::from_json_bytes(s.as_bytes()).map_err(error)?;
@@ -272,7 +279,8 @@ pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
         derive_key,
         keyset_read,
         keyset_diagnostics,
-        claims_check
+        claims_check,
+        inspect_jwt
     );
     // Exception attributes are also present on locally raised compatibility errors.
     let base = m.py().get_type::<JoseError>();

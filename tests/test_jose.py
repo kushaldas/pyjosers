@@ -246,7 +246,7 @@ def test_malformed_input_limits(key):
     with pytest.raises(ValueError):
         JWK.from_json('{"kty":"EC","kty":"RSA"}')
     with pytest.raises(JoseError):
-        JWK.generate(kty="OKP", crv="Ed448")
+        JWK.generate(kty="OKP", crv="X448")
     with pytest.raises(JoseError):
         jwt.encode(key, {}, algorithm="none")
 
