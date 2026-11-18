@@ -157,7 +157,10 @@ The helpers expose fractional numbers in different forms:
 Use ``jwt.dumps(claims)`` to send a discovery or authenticated dictionary as
 JSON. Finite decimals become JSON numbers at their original precision.
 Timezone-aware ``datetime`` values become Unix seconds with microsecond
-precision. Naive datetimes and non-finite values raise ``ValueError``.
+precision. Whole seconds serialize as JSON integers. Both ``jwt.dumps`` and
+``jwt.encode`` require string keys at every level of a claims dictionary. A
+non-string key raises ``TypeError``. Naive datetimes and non-finite values
+raise ``ValueError``.
 Formatting the claims does not authenticate them.
 
 .. doctest::
@@ -167,6 +170,8 @@ Formatting the claims does not authenticate them.
    >>> from pyjosers import jwt
    >>> jwt.dumps({"iat": Decimal("1700000000.123456789")})
    '{"iat":1700000000.123456789}'
+   >>> jwt.dumps({"iat": datetime(1970, 1, 1, 0, 0, 1, tzinfo=timezone.utc)})
+   '{"iat":1}'
    >>> jwt.dumps({"iat": datetime(1970, 1, 1, 0, 0, 1, 25, tzinfo=timezone.utc)})
    '{"iat":1.000025}'
 

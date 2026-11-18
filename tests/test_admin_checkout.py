@@ -3,10 +3,12 @@ import ast
 import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
 import time
 
 import pytest
 from pyjosers import jwk, jwt
+from pyjosers.jws import JWS
 
 
 def _load_function(path, name, namespace):
@@ -23,19 +25,34 @@ def test_actual_admin_functions():
     if not location:
         pytest.skip("set PYJOSERS_ADMIN_CHECKOUT to test an existing admin checkout")
     root = Path(location)
-    namespace = {"jwt": jwt, "JWK": jwk.JWK, "JWKSet": jwk.JWKSet, "Any": object, "json": json}
+    namespace = {
+        "jwt": jwt,
+        "JWK": jwk.JWK,
+        "JWKSet": jwk.JWKSet,
+        "JWS": JWS,
+        "Any": object,
+        "json": json,
+    }
     signing = _load_function(root / "common/signing.py", "create_signed_jwt", namespace)
-    validate = _load_function(root / "entities/lib.py", "self_validate", namespace)
+    entity_lib = root / "entities/lib.py"
+    namespace["self_validate"] = _load_function(entity_lib, "self_validate", namespace)
+    namespace["_entity_configuration_url"] = lambda issuer: issuer + "/.well-known/openid-federation"
+    fetch = _load_function(entity_lib, "fetch_payload", namespace)
     for params, alg in [({"kty": "EC", "crv": "P-256"}, "ES256"),
                         ({"kty": "OKP", "crv": "Ed25519"}, "Ed25519"),
                         ({"kty": "OKP", "crv": "Ed448"}, "Ed448")]:
         key = jwk.JWK.generate(**params, alg=alg)
+        key.kid = key.thumbprint()
         keys = jwk.JWKSet()
         keys.add(key)
         claims = {"iss": "https://entity.example", "sub": "https://entity.example",
                   "iat": time.time(), "exp": time.time() + 3600,
                   "jwks": keys.export(private_keys=False, as_dict=True)}
         token = signing(claims, key, "entity-statement+jwt")
-        received = jwt.JWT.from_jose_token(token)
-        assert validate(received) == claims
+        namespace["_federation_get"] = lambda url: SimpleNamespace(status_code=200, text=token)
+        payload, original = fetch(claims["iss"])
+        assert payload == claims
+        assert original == token
+        received = jwt.JWT(jwt=original, key=keys)
+        assert json.loads(received.header)["kid"] == claims["jwks"]["keys"][0]["kid"] == key.kid
         assert json.loads(received.claims) == claims

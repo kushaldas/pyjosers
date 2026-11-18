@@ -29,7 +29,7 @@ def dumps(value: Any) -> str:
     """Serialize JSON values, including finite Decimal numbers and aware datetimes.
 
     Decimal values retain their precision, including in nested objects and
-    arrays. Datetimes are encoded as Unix seconds with microsecond precision.
+    arrays. Datetimes use integer Unix seconds when whole and exact microseconds otherwise.
     Object keys must be strings. Naive datetimes, non-finite numbers and
     circular containers raise ValueError. Unsupported types raise TypeError.
     This formats data for interchange and does not authenticate a JWT.
@@ -41,6 +41,8 @@ def dumps(value: Any) -> str:
             if item.utcoffset() is None:
                 raise ValueError("JWT datetime requires a timezone")
             delta = item - datetime(1970, 1, 1, tzinfo=timezone.utc)
+            if delta.microseconds == 0:
+                return str(delta // timedelta(seconds=1))
             micros = delta // timedelta(microseconds=1)
             # Construct directly to avoid rounding under the active decimal context.
             item = Decimal(f"{micros}e-6")
@@ -73,11 +75,7 @@ def _claims_json(value: dict | str | bytes) -> str:
         return value.decode("utf-8")
     if isinstance(value, str):
         return value
-    # Keep the standard encoder's fast path and existing dictionary behavior.
-    try:
-        return json_encode(value)
-    except TypeError:
-        return dumps(value)
+    return dumps(value)
 
 
 def _claims_text(value: dict | str | bytes) -> str:

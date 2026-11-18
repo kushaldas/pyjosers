@@ -19,12 +19,9 @@ class JWKeyNotFound(InvalidJWKValue):
     """No unambiguous key matches the requested identifier."""
 
 
-# Attribute assignment is available for JOSE members. Extensions use mapping
-# syntax so typos and collisions with method names cannot shadow key data.
-_JWK_MEMBERS = frozenset(
-    "kty use key_ops alg kid x5u x5c x5t x5t#S256 "
-    "n e d p q dp dq qi oth crv x y k pub priv".split()
-)
+_STRING_METADATA = frozenset({"kid", "use", "alg", "x5u", "x5t", "x5t#S256"})
+_LIST_METADATA = frozenset({"key_ops", "x5c"})
+_KEY_MATERIAL = frozenset("kty n e d p q dp dq qi oth crv x y k pub priv".split())
 
 
 class JWK(MutableMapping):
@@ -63,15 +60,23 @@ class JWK(MutableMapping):
             raise AttributeError(name) from None
 
     def __setattr__(self, name: str, value: Any) -> None:
-        if name.startswith("_"):
-            object.__setattr__(self, name, value)
-        elif name in _JWK_MEMBERS:
+        if name in _STRING_METADATA:
+            if not isinstance(value, str):
+                raise TypeError(f"{name} must be a string")
             self[name] = value
+        elif name in _LIST_METADATA:
+            if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+                raise TypeError(f"{name} must be a list of strings")
+            self[name] = value.copy()
+        elif name in _KEY_MATERIAL:
+            raise AttributeError(f"{name} is read-only as an attribute; use import_key to replace the key")
         else:
-            raise AttributeError(f"unknown JWK attribute {name!r}; use mapping syntax for extensions")
+            super().__setattr__(name, value)
 
     def __delattr__(self, name: str) -> None:
-        if name in _JWK_MEMBERS:
+        if name in _KEY_MATERIAL:
+            raise AttributeError(f"{name} is read-only as an attribute; use import_key to replace the key")
+        if name in _STRING_METADATA or name in _LIST_METADATA:
             try:
                 del self[name]
             except KeyError:

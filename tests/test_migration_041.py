@@ -23,16 +23,51 @@ def test_assigned_kid_is_published_and_selects_the_signing_key():
     assert "kid" not in key and not hasattr(key, "kid")
 
 
-def test_attribute_writes_cannot_shadow_methods_or_create_typo_members():
-    key = JWK.generate(kty="OKP", crv="Ed25519")
-    key.alg = "Ed25519"
-    assert key["alg"] == "Ed25519"
-    for name in ("kdi", "export", "key_id"):
-        with pytest.raises(AttributeError):
-            setattr(key, name, "typo")
-        assert name not in key
+def test_subclass_attributes_stay_local_and_extensions_are_exported():
+    class LabeledKey(JWK):
+        def __init__(self, **kwargs):
+            self.label = "local"
+            super().__init__(**kwargs)
+
+    key = LabeledKey.generate(kty="OKP", crv="Ed25519")
+    assert key.label == "local"
     key["tenant"] = "example"
-    assert key["tenant"] == "example"
+    exported = key.export(as_dict=True)
+    assert exported["tenant"] == "example"
+    assert "label" not in exported
+    del key.label
+    assert not hasattr(key, "label")
+
+
+def test_key_material_attribute_edits_preserve_signing_key():
+    key = JWK.generate(kty="OKP", crv="Ed25519")
+    other = JWK.generate(kty="OKP", crv="Ed25519")
+    original = key.thumbprint()
+    with pytest.raises(AttributeError):
+        key.x = other.x
+    with pytest.raises(AttributeError):
+        del key.d
+    assert key.thumbprint() == key.public().thumbprint() == original
+    wire = jwt.encode(key, {"sub": "issuer"}, algorithm="Ed25519")
+    assert jwt.decode(wire, key.public())["sub"] == "issuer"
+
+
+@pytest.mark.parametrize(("name", "valid", "invalid"), [
+    ("kid", "first", 123), ("alg", "Ed25519", False), ("use", "sig", None),
+    ("key_ops", ["sign", "verify"], "sign"), ("x5c", ["YQ=="], [1]),
+    ("x5u", "https://example.org/cert", []), ("x5t", "abc", 5),
+    ("x5t#S256", "abc", {}),
+])
+def test_bad_metadata_attribute_preserves_exportable_key_set(name, valid, invalid):
+    key = JWK.generate(kty="OKP", crv="Ed25519")
+    setattr(key, name, valid)
+    keys = JWKSet()
+    keys.add(key)
+    before = keys.export(private_keys=False)
+    with pytest.raises(TypeError):
+        setattr(key, name, invalid)
+    assert key[name] == valid
+    assert keys.export(private_keys=False) == before
 
 
 def test_exact_discovery_and_authenticated_json():
@@ -79,3 +114,23 @@ def test_dumps_rejects_cycles_and_unsupported_values():
         jwt.dumps(shared)
     with pytest.raises(TypeError):
         jwt.dumps(object())
+
+
+@pytest.mark.parametrize("seconds", [-1, 0, 1795003534])
+def test_whole_second_datetime_is_a_json_integer(seconds):
+    stamp = datetime.fromtimestamp(seconds, timezone.utc)
+    assert jwt.dumps(stamp) == str(seconds)
+    key = JWK.generate(kty="oct", alg="HS256")
+    wire = jwt.encode(key, {"issued": stamp}, algorithm="HS256")
+    value = jwt.decode(wire, key)["issued"]
+    assert type(value) is int and value == seconds
+
+
+@pytest.mark.parametrize("value", ["a", datetime(2026, 1, 1, tzinfo=timezone.utc)])
+@pytest.mark.parametrize("nested", [False, True])
+def test_non_string_claim_names_are_rejected_consistently(value, nested):
+    obj = {1: value}
+    claims = {"items": [obj]} if nested else obj
+    key = JWK.generate(kty="oct", alg="HS256")
+    with pytest.raises(TypeError, match="keys must be strings"):
+        jwt.encode(key, claims, algorithm="HS256")
