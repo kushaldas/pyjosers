@@ -4,8 +4,10 @@
 
 - Store assignments such as `key.kid = key.thumbprint()` in the JWK mapping so
   exported public sets carry the same identifier as signed headers. Attribute
-  writes check metadata types. Key material attributes are read-only. Custom
-  instance and subclass attributes remain local. Use item syntax for extensions.
+  writes check metadata types. Key material attributes are read-only.
+- Compatibility: assigning an unsupported public attribute to a plain `JWK`
+  now raises `AttributeError`. Subclasses can still assign local attributes.
+  Use item syntax for exported extension members.
 - Add `jwt.dumps()` for exact JSON numbers from discovery and authenticated
   claims. It accepts finite `Decimal` values and timezone-aware `datetime`
   values, including in dictionaries supplied for signing. Whole-second

@@ -70,6 +70,8 @@ class JWK(MutableMapping):
             self[name] = value.copy()
         elif name in _KEY_MATERIAL:
             raise AttributeError(f"{name} is read-only as an attribute; use import_key to replace the key")
+        elif type(self) is JWK and not name.startswith("_"):
+            raise AttributeError(f"unsupported JWK attribute {name!r}; use mapping syntax for extensions")
         else:
             super().__setattr__(name, value)
 

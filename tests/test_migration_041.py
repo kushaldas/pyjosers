@@ -23,6 +23,17 @@ def test_assigned_kid_is_published_and_selects_the_signing_key():
     assert "kid" not in key and not hasattr(key, "kid")
 
 
+def test_unknown_public_attribute_on_plain_jwk_is_rejected():
+    key = JWK.generate(kty="OKP", crv="Ed25519", kid="original")
+    with pytest.raises(AttributeError, match="kdi"):
+        key.kdi = "rotated"
+
+    assert not hasattr(key, "kdi")
+    assert key.export_public(as_dict=True)["kid"] == "original"
+    key["tenant"] = "example"
+    assert key.export(as_dict=True)["tenant"] == "example"
+
+
 def test_subclass_attributes_stay_local_and_extensions_are_exported():
     class LabeledKey(JWK):
         def __init__(self, **kwargs):

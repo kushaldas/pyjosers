@@ -40,8 +40,10 @@ Supported patterns
        updates the exported key. ``kid``, ``use``, ``alg``, ``x5u``, ``x5t`` and
        ``x5t#S256`` take strings. ``key_ops`` and ``x5c`` take lists of strings.
        Key material attributes are read-only. Use ``import_key(**data)`` to
-       replace the full key. Custom instance attributes stay local. Use mapping
-       syntax to include extensions in a full JWK export.
+       replace the full key. Assigning an unsupported public name on a plain
+       ``JWK``, such as ``key.kdi``, raises ``AttributeError``. Subclasses can
+       assign their own local attributes. Use mapping syntax to include
+       extensions in a full JWK export.
    * - ``JWK.generate``; public/private exports; SHA-256 thumbprints
      - Supported for the algorithm families in :doc:`algorithms`
    * - ``JWKSet.add``, ``from_json``, ``export``, ``get_key``
