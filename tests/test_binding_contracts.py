@@ -1,4 +1,4 @@
-"""Published jose-rs 0.10 features and binding-specific compatibility contracts."""
+"""JOSE interoperability and Python binding compatibility contracts."""
 import datetime
 import json
 from decimal import Decimal

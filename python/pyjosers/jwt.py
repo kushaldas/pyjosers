@@ -3,10 +3,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field, replace
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 import json
 import time
 import uuid
+from typing import Any
 
 from . import _native, jwe, jws
 from ._native import JWTExpired, JWTNotYetValid, JWTInvalidClaimValue
@@ -23,8 +25,57 @@ class JWTInvalidClaimFormat(JWTInvalidClaimValue):
     """Claims do not conform to the required JSON types."""
 
 
+def dumps(value: Any) -> str:
+    """Serialize JSON values, including finite Decimal numbers and aware datetimes.
+
+    Decimal values retain their precision, including in nested objects and
+    arrays. Datetimes use integer Unix seconds when whole and exact microseconds otherwise.
+    Object keys must be strings. Naive datetimes, non-finite numbers and
+    circular containers raise ValueError. Unsupported types raise TypeError.
+    This formats data for interchange and does not authenticate a JWT.
+    """
+    active: set[int] = set()
+
+    def encode_value(item: Any) -> str:
+        if isinstance(item, datetime):
+            if item.utcoffset() is None:
+                raise ValueError("JWT datetime requires a timezone")
+            delta = item - datetime(1970, 1, 1, tzinfo=timezone.utc)
+            if delta.microseconds == 0:
+                return str(delta // timedelta(seconds=1))
+            micros = delta // timedelta(microseconds=1)
+            # Construct directly to avoid rounding under the active decimal context.
+            item = Decimal(f"{micros}e-6")
+        if isinstance(item, Decimal):
+            if not Decimal.is_finite(item):
+                raise ValueError("non-finite JSON number")
+            return Decimal.__str__(item)
+        if not isinstance(item, (dict, list, tuple)):
+            return json_encode(item)
+
+        identity = id(item)
+        if identity in active:
+            raise ValueError("circular JSON container")
+        active.add(identity)
+        try:
+            if isinstance(item, dict):
+                if not all(isinstance(key, str) for key in item):
+                    raise TypeError("JSON object keys must be strings")
+                members = (json_encode(key) + ":" + encode_value(item[key]) for key in sorted(item))
+                return "{" + ",".join(members) + "}"
+            return "[" + ",".join(encode_value(part) for part in item) + "]"
+        finally:
+            active.remove(identity)
+
+    return encode_value(value)
+
+
 def _claims_json(value: dict | str | bytes) -> str:
-    return value.decode("utf-8") if isinstance(value, bytes) else value if isinstance(value, str) else json_encode(value)
+    if isinstance(value, bytes):
+        return value.decode("utf-8")
+    if isinstance(value, str):
+        return value
+    return dumps(value)
 
 
 def _claims_text(value: dict | str | bytes) -> str:
@@ -119,8 +170,8 @@ class JWT:
 
     ``JWT(jwt=token, key=key)`` verifies a JWS by default. Specify
     ``expected_type='JWE'`` for encrypted tokens. Parsing without a key does
-    not expose trusted claims. ``token.objects`` offers explicit unverified
-    inspection for federation discovery, matching the admin project's usage.
+    not expose trusted claims. Use UnverifiedJwt for typed discovery of candidate
+    keys in a compact signed JWT.
     ``allow_key_reference_headers=True`` permits emitting ``jku``, ``jwk``,
     ``x5u``, and ``x5c`` when signing or encrypting; it does not affect validation.
     ``max_plaintext`` optionally limits decrypted claims bytes, inclusively.
@@ -457,7 +508,7 @@ class UnverifiedJwt:
 
     @property
     def claims(self) -> dict:
-        """Return untrusted discovery claims, preserving exact decimal values."""
+        """Return untrusted claims with Decimal for fractional or exponential numbers. Use dumps() to serialize."""
         return _claims_object(self._claims)
 
     def verify_with(self, keys: JWKSet, *, validation: Validation | None = None,

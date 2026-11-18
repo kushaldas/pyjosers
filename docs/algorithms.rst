@@ -116,5 +116,4 @@ notes; format availability does not promise every key type has that encoding.
 ``features()`` reports the installed feature configuration. Reports are cached
 from the installed extension, without probing keys or doing crypto.
 
-See :doc:`backend-0100` for the complete integration matrix and
-:doc:`encryption` for algorithm-specific multi-recipient restrictions.
+See :doc:`encryption` for algorithm-specific multi-recipient restrictions.

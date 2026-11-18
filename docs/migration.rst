@@ -36,7 +36,14 @@ Supported patterns
    * - Existing pattern
      - pyjosers behavior
    * - ``JWK.from_json``, ``JWK(**data)``, mapping access, ``key.kid``
-     - Supported; key material is validated during import
+     - Assign metadata as attributes. For example, ``key.kid = key.thumbprint()``
+       updates the exported key. ``kid``, ``use``, ``alg``, ``x5u``, ``x5t`` and
+       ``x5t#S256`` take strings. ``key_ops`` and ``x5c`` take lists of strings.
+       Key material attributes are read-only. Use ``import_key(**data)`` to
+       replace the full key. Assigning an unsupported public name on a plain
+       ``JWK``, such as ``key.kdi``, raises ``AttributeError``. Subclasses can
+       assign their own local attributes. Use mapping syntax to include
+       extensions in a full JWK export.
    * - ``JWK.generate``; public/private exports; SHA-256 thumbprints
      - Supported for the algorithm families in :doc:`algorithms`
    * - ``JWKSet.add``, ``from_json``, ``export``, ``get_key``
@@ -47,8 +54,10 @@ Supported patterns
      - Verify JWS and validate claims before exposing ``claims``
    * - ``JWT.from_jose_token`` then ``validate``
      - Supported; parsing alone does not expose trusted ``claims``
-   * - ``token.token.objects.get("payload")``
-     - Returns a snapshot containing unverified bytes for discovery
+   * - Inspect a signed token before choosing its verification key
+     - ``jwt.UnverifiedJwt(wire).claims`` returns untrusted claims with exact
+       decimals. Use ``jwt.decode_unverified(wire)`` for a plain header and
+       claims pair. See :doc:`tokens` for verification and JSON serialization.
    * - ``JWT.make_encrypted_token``
      - Supported; read with ``expected_type="JWE"``
    * - ``JWS`` compact/flattened/general and detached signatures
@@ -107,10 +116,9 @@ To validate an inline key set and read the authenticated entity configuration:
 .. code-block:: python
 
    from pyjosers import JWKSet, jwt
-   from pyjosers.common import json_encode
 
    verified = jwt.decode_self_signed(
-       wire, lambda claims: JWKSet.from_json(json_encode(claims["jwks"])),
+       wire, lambda claims: JWKSet.from_json(jwt.dumps(claims["jwks"])),
        validation=jwt.Validation(allowed_algorithms=["EdDSA", "Ed448", "Ed25519"]),
    )
    authenticated = verified.value
@@ -170,11 +178,11 @@ This optional test compiles only those two function definitions with pyjosers
 imports and generated keys. It does not replace running the complete admin
 application test suite as part of its eventual migration.
 
-Changes from pyjosers 0.1
----------------------------
+Key and token handling
+----------------------
 
 * Private PEM export requires ``password=None`` for plaintext or password bytes
-  for encrypted PKCS#8. The omitted-password case now raises ``ValueError``.
+  for encrypted PKCS#8. Omitting the password argument raises ``ValueError``.
 * JWKS defaults bound imports to 4 MiB and 1,024 entries and candidate sweeps to
   64 keys. Explicit ``SetLimits`` / ``SelectionPolicy`` overrides support larger
   deployments. Matching/fallback behavior remains compatible within these bounds.

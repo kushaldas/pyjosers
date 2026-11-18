@@ -14,11 +14,11 @@ print(verified.claims)
 
 Development:
 
-Release 0.4.0 uses published crates.io `jose-rs =0.12.0`, Kryptering 0.7.1,
+Release 0.4.1 uses published crates.io `jose-rs =0.12.1`, Kryptering 0.7.1,
 and `pyo3 =0.30.1`. Wheels and source builds need no sibling checkout.
 See `docs/tokens.rst` for Ed448 signing, embedded key discovery and verified key indices.
 
-New APIs cover ECDH/X25519, AES-GCM key wrapping, password encryption,
+The API supports ECDH/X25519, AES-GCM key wrapping, password encryption,
 general JWE, external AAD, encrypted key files, bounded JWKS selection,
 capability reports, and authenticated payload/header results. Private PEM
 export requires an explicit password choice (`None` for plaintext).

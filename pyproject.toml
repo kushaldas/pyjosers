@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "pyjosers"
-version = "0.4.0"
+version = "0.4.1"
 description = "Rust-backed JOSE with a familiar jwcrypto-style Python API"
 readme = "README.md"
 requires-python = ">=3.10"

@@ -140,12 +140,40 @@ Outer encryption and inner signature policies are independent.
 Unverified inspection
 ---------------------
 
-``decode_unverified`` returns a header and claims dictionary without checking
-the signature, issuer, audience or timestamps. Similarly,
-``JWT.from_jose_token(wire).token.objects["payload"]`` returns unverified bytes.
-These are discovery tools, not authorization decisions. Do not use a payload's
-embedded key as an application trust anchor merely because it verifies the
-same payload; federation trust still needs to be established separately.
+Use ``header, claims = jwt.decode_unverified(wire)`` for plain Python
+dictionaries, or ``inspected = jwt.UnverifiedJwt(wire)`` to discover candidate
+keys from a compact signed JWT. Both expose untrusted data. After obtaining
+keys, use ``inspected.verify_with(keys)`` to verify the original signed bytes.
+Your application must establish issuer trust independently.
+
+The helpers expose fractional numbers in different forms:
+
+* ``jwt.decode_unverified(wire)[1]`` uses Python ``float``.
+* ``jwt.UnverifiedJwt(wire).claims`` preserves fractional and exponential numbers
+  as ``Decimal``. ``jwt.decode_authenticated(wire, keys).value`` does likewise
+  after verification.
+* ``JWT.claims`` is JSON text containing the original number tokens.
+
+Use ``jwt.dumps(claims)`` to send a discovery or authenticated dictionary as
+JSON. Finite decimals become JSON numbers at their original precision.
+Timezone-aware ``datetime`` values become Unix seconds with microsecond
+precision. Whole seconds serialize as JSON integers. Both ``jwt.dumps`` and
+``jwt.encode`` require string keys at every level of a claims dictionary. A
+non-string key raises ``TypeError``. Naive datetimes and non-finite values
+raise ``ValueError``.
+Formatting the claims does not authenticate them.
+
+.. doctest::
+
+   >>> from datetime import datetime, timezone
+   >>> from decimal import Decimal
+   >>> from pyjosers import jwt
+   >>> jwt.dumps({"iat": Decimal("1700000000.123456789")})
+   '{"iat":1700000000.123456789}'
+   >>> jwt.dumps({"iat": datetime(1970, 1, 1, 0, 0, 1, tzinfo=timezone.utc)})
+   '{"iat":1}'
+   >>> jwt.dumps({"iat": datetime(1970, 1, 1, 0, 0, 1, 25, tzinfo=timezone.utc)})
+   '{"iat":1.000025}'
 
 Checked JSON and authenticated results
 ----------------------------------------
@@ -182,7 +210,7 @@ Ed448 and embedded JWK Sets
 Dictionary inputs use deterministic sorted JSON members. Passing claims as JSON
 text preserves their original numeric spelling and member order when signing.
 
-In 0.4.0 an Edwards JWK can pin its curve name and sign an ``EdDSA`` header,
+An Edwards JWK can pin its curve name and sign an ``EdDSA`` header,
 or pin ``EdDSA`` and sign the matching fully specified name. Pin the wire
 algorithm in your validation policy. For a self-signed entity configuration,
 the selector receives untrusted claims exactly once after the native parser

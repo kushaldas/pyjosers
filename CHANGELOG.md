@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.4.1 - 2026-11-18
+
+- Store assignments such as `key.kid = key.thumbprint()` in the JWK mapping so
+  exported public sets carry the same identifier as signed headers. Attribute
+  writes check metadata types. Key material attributes are read-only.
+- Compatibility: assigning an unsupported public attribute to a plain `JWK`
+  now raises `AttributeError`. Subclasses can still assign local attributes.
+  Use item syntax for exported extension members.
+- Add `jwt.dumps()` for exact JSON numbers from discovery and authenticated
+  claims. It accepts finite `Decimal` values and timezone-aware `datetime`
+  values, including in dictionaries supplied for signing. Whole-second
+  datetimes serialize as JSON integers.
+- Compatibility: dictionary claims now require string keys at every level.
+  Earlier versions could silently convert numeric keys to strings.
+- Document typed key discovery, the numeric types exposed by each claims API,
+  and verification of the original compact token.
+- Update the published jose-rs dependency to 0.12.1 for Rust algorithm types'
+  `FromStr` implementations. Wire algorithm names and behavior are unchanged.
+
 ## 0.4.0 - 2026-11-18
 
 - Refresh the Rust 1.89 lockfile with zeroize 1.9.2, const-oid 0.10.3 and
