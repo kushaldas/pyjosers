@@ -23,7 +23,7 @@ Build a wheel and source distribution::
    maturin build --release --locked
    maturin sdist
 
-Source builds use published crates.io jose-rs 0.10.0, Kryptering 0.7 and PyO3
+Source builds use published crates.io jose-rs 0.12.0, Kryptering 0.7.1 and PyO3
 0.30.1. Neither sibling checkouts nor unpublished backend patches are required.
 No backend source is vendored. ``Cargo.lock`` records registry checksums and
 pins dependencies for reproducible builds.

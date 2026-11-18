@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "pyjosers"
-version = "0.3.0"
+version = "0.4.0"
 description = "Rust-backed JOSE with a familiar jwcrypto-style Python API"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -19,8 +19,9 @@ Repository = "https://github.com/kushaldas/pyjosers"
 dev = ["pytest>=9.2", "jwcrypto>=1.6.1", "pyjosers[docs]", "maturin>=1.16,<2"]
 docs = [
     "sphinx>=9.2; python_version >= '3.13'",
-    "sphinx>=8.2.3,<9; python_version >= '3.11' and python_version < '3.13'",
-    "sphinx>=7.4.7,<8; python_version < '3.11'",
+    "sphinx>=9.1.1; python_version == '3.12'",
+    "sphinx>=9.0.4; python_version == '3.11'",
+    "sphinx>=8.1.3; python_version == '3.10'",
     "furo>=2025.12.19",
 ]
 

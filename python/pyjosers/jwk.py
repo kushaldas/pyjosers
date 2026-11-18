@@ -84,7 +84,7 @@ class JWK(MutableMapping):
 
     @classmethod
     def generate(cls, *, kty: str, size: int | None = None, crv: str | None = None, **kwargs) -> JWK:
-        """Generate RSA, EC, Ed25519/X25519, octet, or AKP (ML-DSA/composite) keys.
+        """Generate RSA, EC, Ed25519/Ed448/X25519, octet, or AKP (ML-DSA/composite) keys.
 
         ``size`` is in bits. RSA defaults to 2048; octet sizes are inferred
         from supported HMAC/AES algorithms, otherwise defaulting to 256.

@@ -175,3 +175,51 @@ password decryption work budget. The outer protected content type must be JWT.
 
 .. literalinclude:: ../examples/nested.py
    :language: python
+
+Ed448 and embedded JWK Sets
+---------------------------
+
+Dictionary inputs use deterministic sorted JSON members. Passing claims as JSON
+text preserves their original numeric spelling and member order when signing.
+
+In 0.4.0 an Edwards JWK can pin its curve name and sign an ``EdDSA`` header,
+or pin ``EdDSA`` and sign the matching fully specified name. Pin the wire
+algorithm in your validation policy. For a self-signed entity configuration,
+the selector receives untrusted claims exactly once after the native parser
+checks the compact input and rejects duplicate JSON members at every depth.
+Return a bounded JWK Set of candidate public keys. Discovery defaults to
+trying unnamed keys only when the entire set is unnamed. A named set requires
+a matching protected key ID. Pass a selection policy to override this rule. Your application still
+establishes issuer trust independently.
+
+.. doctest::
+
+   >>> from pyjosers import JWK, JWKSet, SelectionPolicy, jwt
+   >>> from pyjosers.common import json_encode
+   >>> key = JWK.generate(kty="OKP", crv="Ed448", alg="Ed448", kid="active")
+   >>> claims = {"jwks": {"keys": [key.public().export(as_dict=True)]}, "sub": "entity"}
+   >>> wire = jwt.encode(key, claims, algorithm="EdDSA", headers={"kid": "active"})
+   >>> def select(claims):
+   ...     return JWKSet.from_json(json_encode(claims["jwks"]))
+   >>> policy = jwt.Validation(allowed_algorithms=["EdDSA"], leeway=0)
+   >>> result = jwt.decode_self_signed(wire, select, validation=policy, selection_policy=SelectionPolicy.strict())
+   >>> result.value["sub"], result.protected["alg"], result.verified_key_index
+   ('entity', 'EdDSA', 0)
+
+For asynchronous discovery, create ``jwt.UnverifiedJwt(wire)``, inspect its
+untrusted ``header`` and ``claims``, and call ``verify_with(keys, validation=policy)``
+after obtaining the keys. Verification authenticates the original signed bytes.
+With an already trusted set, call ``jwt.decode_authenticated(wire, keys,
+validation=policy)`` directly. The authenticated key index is zero-based in
+the supplied set, and is ``None`` for single-key verification or decryption.
+
+Time-check policy
+-----------------
+
+``Validation()`` checks expiration, not-before and future issued-at times with
+60 seconds of leeway. Use ``leeway=0`` for strict boundaries. To inspect an
+expired but correctly signed token, ``policy.without_exp()`` returns a copy
+that retains the other checks, including required claims and maximum age.
+``without_nbf()`` and ``without_iat_future_check()`` work the same way.
+``Validation.signature_only()`` starts with all three time checks disabled.
+Continue to pin the issuer's signing algorithms when using that policy.

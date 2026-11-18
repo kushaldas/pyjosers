@@ -14,14 +14,15 @@ class Authenticated(Generic[T]):
     Instances are returned by authentication methods, not constructed by callers.
     Header access returns copies; unprotected metadata is never a trust assertion.
     """
-    __slots__ = ("_value", "_protected", "_unprotected", "_claims_json")
+    __slots__ = ("_value", "_protected", "_unprotected", "_claims_json", "_verified_key_index")
 
     def __init__(self):
         raise TypeError("Authenticated results are returned by verification or decryption")
 
     @classmethod
-    def _from_verified(cls, value: T, protected: dict, unprotected=()) -> Authenticated[T]:
+    def _from_verified(cls, value: T, protected: dict, unprotected=(), *, verified_key_index: int | None = None) -> Authenticated[T]:
         result = object.__new__(cls)
+        result._verified_key_index = verified_key_index
         result._value = deepcopy(value)
         result._claims_json = False
         result._protected = deepcopy(protected)
@@ -29,10 +30,10 @@ class Authenticated(Generic[T]):
         return result
 
     @classmethod
-    def _from_verified_json(cls, raw: str, protected: dict, unprotected=()) -> Authenticated[dict]:
+    def _from_verified_json(cls, raw: str, protected: dict, unprotected=(), *, verified_key_index: int | None = None) -> Authenticated[dict]:
         # Retain already checked JSON. Ordinary JWT validation needs no extra
         # claims copy; exact Decimal conversion happens only when requested.
-        result = cls._from_verified(raw, protected, unprotected)
+        result = cls._from_verified(raw, protected, unprotected, verified_key_index=verified_key_index)
         result._claims_json = True
         return result
 
@@ -42,6 +43,11 @@ class Authenticated(Generic[T]):
         if self._claims_json:
             return json.loads(self._value, parse_float=Decimal)
         return deepcopy(self._value)
+
+    @property
+    def verified_key_index(self) -> int | None:
+        """Zero-based position of the successful signing key in the original JWK Set."""
+        return self._verified_key_index
 
     @property
     def protected(self) -> dict:

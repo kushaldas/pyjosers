@@ -85,7 +85,7 @@ For example, its federation signing workflow can remain:
 
    def create_signed_jwt(claims, key, token_type=None):
        alg = key.get("alg") or "RS256"
-       if alg == "Ed25519":
+       if alg in ("Ed25519", "Ed448"):
            alg = "EdDSA"
        header = {"alg": alg, "kid": key.get("kid") or key.thumbprint()}
        if token_type:
@@ -98,33 +98,22 @@ For example, its federation signing workflow can remain:
 and returned claims. Time validation now preserves nanosecond precision rather
 than flooring dates; unsupported precision is rejected. Original JSON claim
 text is retained, but Python float values cannot recover precision already lost.
-Ed25519 keys labelled ``alg=Ed25519`` are accepted with an ``EdDSA`` protected
-header without rewriting the persisted JSON key. The algorithm alias is
-restricted to OKP Ed25519 keys. Explicit ``alg=Ed25519`` wire headers are now
-supported too; allowlists distinguish that name from ``EdDSA``.
+Ed25519 and Ed448 keys work with either their matching fully specified name or
+the legacy ``EdDSA`` header, including when selecting from an authority's JWK
+Set. See :doc:`tokens` for bounded discovery and exact wire-name policy.
 
-The current admin tests also expect **Ed448** keys. Standalone Ed448 is not
-implemented by jose-rs and cannot migrate by an import change. Keep that path
-on jwcrypto, rotate to a supported algorithm according to your federation's
-policy, or add upstream Ed448 support before switching the entire deployment.
-Composite ML-DSA-87-Ed448 is a distinct supported draft algorithm; it does not
-make standalone Ed448 available.
-
-The admin's self-validation pattern remains usable:
+To validate an inline key set and read the authenticated entity configuration:
 
 .. code-block:: python
 
-   import json
-   from pyjosers import jwt
-   from pyjosers.jwk import JWK, JWKSet
+   from pyjosers import JWKSet, jwt
+   from pyjosers.common import json_encode
 
-   parsed = jwt.JWT.from_jose_token(wire)
-   discovered = json.loads(parsed.token.objects["payload"])
-   keys = JWKSet()
-   for data in discovered["jwks"]["keys"]:
-       keys.add(JWK(**data))
-   parsed.validate(keys)
-   authenticated = json.loads(parsed.claims)
+   verified = jwt.decode_self_signed(
+       wire, lambda claims: JWKSet.from_json(json_encode(claims["jwks"])),
+       validation=jwt.Validation(allowed_algorithms=["EdDSA", "Ed448", "Ed25519"]),
+   )
+   authenticated = verified.value
 
 This authenticates the statement against its advertised keys. It does not
 establish that the advertised issuer belongs to a trusted federation. Keep the
@@ -134,7 +123,7 @@ fetch embedded ``jwks_uri``, ``jku`` or ``x5u`` URLs.
 Intentional differences
 -----------------------
 
-* Standalone Ed448, secp256k1, X448, RSA1_5 and JWE compression remain
+* secp256k1, X448, RSA1_5 and JWE compression remain
   unsupported. X25519, ECDH-ES, PBES2, GCMKW, AAD and general JWE are supported.
 * SHA-1 RSA-OAEP needs an explicit ``legacy`` build. Unsigned tokens remain
   unavailable.

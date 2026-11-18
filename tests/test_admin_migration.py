@@ -30,7 +30,8 @@ def self_validate(token):
 
 
 @pytest.mark.parametrize("params,alg", [({"kty": "EC", "crv": "P-256"}, "ES256"),
-                                       ({"kty": "OKP", "crv": "Ed25519"}, "Ed25519")])
+                                       ({"kty": "OKP", "crv": "Ed25519"}, "Ed25519"),
+                                       ({"kty": "OKP", "crv": "Ed448"}, "Ed448")])
 def test_admin_workflow(params, alg):
     key = jwk.JWK.generate(**params, alg=alg)
     keyset = jwk.JWKSet()

@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.4.0 - 2026-11-18
+
+- Refresh the Rust 1.89 lockfile with zeroize 1.9.2, const-oid 0.10.3 and
+  target-lexicon 0.13.6. Update the documentation extra to Sphinx 8.1.3
+  on Python 3.10, 9.0.4 on 3.11 and 9.1.1 on 3.12.
+
+- Update the published jose-rs backend to 0.12.0. Generate, import, sign and
+  verify standalone Ed448 keys with either Ed448 or EdDSA on the wire.
+  Ed25519 and Ed448 accept the matching curve name and EdDSA as JWK pins in
+  both directions. Algorithm allowlists still match exact header names.
+- Return the original JWK Set position in `Authenticated.verified_key_index`.
+- Add `jwt.UnverifiedJwt` and `jwt.decode_self_signed` for bounded compact JWT
+  discovery. Duplicate claims at any depth are rejected before key selection.
+- Add `Validation.signature_only()`, `without_exp()`, `without_nbf()` and
+  `without_iat_future_check()` for explicit time-check policy.
+
 ## 0.3.0 - 2026-11-10
 
 - Synchronize package, runtime and documentation versions at 0.3.0.

@@ -49,9 +49,6 @@ def test_explicit_ed25519_interop_and_pins(alg):
     parsed.allowed_algs = ["EdDSA" if alg == "Ed25519" else "Ed25519"]
     with pytest.raises(ValueError):
         parsed.deserialize(ours.serialize(True), key)
-    if alg == "EdDSA":
-        with pytest.raises(ValueError):
-            JWS(b"payload").add_signature(key, protected={"alg": "Ed25519"})
 
 
 @pytest.mark.parametrize("hashalg,hname", [(hashes.SHA256(), "sha-256"), (hashes.SHA384(), "sha-384"), (hashes.SHA512(), "sha-512")])
