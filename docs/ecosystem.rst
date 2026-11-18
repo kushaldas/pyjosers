@@ -1,4 +1,4 @@
-Dependency status for 0.4.0
+Dependency status for 0.4.1
 ===========================
 
 Checked against crates.io and PyPI on 2026-11-18. All Rust dependencies
@@ -14,8 +14,8 @@ Direct Rust dependencies
      - Selected
      - Latest stable
    * - jose-rs
-     - 0.12.0
-     - 0.12.0
+     - 0.12.1
+     - 0.12.1
    * - kryptering
      - 0.7.1
      - 0.7.1
@@ -35,13 +35,8 @@ Direct Rust dependencies
      - 1.9.2
      - 1.9.2
 
-Lockfile changes since 0.3.0
-----------------------------
-
-* jose-rs 0.11.0 -> 0.12.0
-* zeroize 1.9.1 -> 1.9.2
-* const-oid 0.10.2 -> 0.10.3
-* target-lexicon 0.13.5 -> 0.13.6
+RSA security
+------------
 
 The locked RSA 0.10.0 contains the fix for RUSTSEC-2023-0071 for private-key
 operations, including signing and decryption. The audit requires no advisory

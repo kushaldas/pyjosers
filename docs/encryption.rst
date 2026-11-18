@@ -84,8 +84,9 @@ Failed decryption clears trusted plaintext and results; ``payload`` then raises.
 ``max_plaintext`` is an inclusive byte limit, including zero for empty messages;
 ``None`` retains the backend token-size limit. It applies to every decryption
 serialization and preserves key/algorithm checks. CBC may require one extra
-padding block before the exact authenticated length check.
+padding block before the exact authenticated length check. For an empty GCM
+message in JSON serialization, include ``"ciphertext": ""``. Decryption still
+verifies the authentication tag before returning an empty payload.
 
 Key-reference emission requires ``allow_key_reference_headers=True``. No URL is
-fetched. Compression, RSA1_5 and PKCS#11 decryption are unsupported. See
-:doc:`backend-0100` for the narrow empty-GCM JSON parser workaround.
+fetched. Compression, RSA1_5 and PKCS#11 decryption are unsupported.

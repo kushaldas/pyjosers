@@ -66,8 +66,8 @@ impl JweEnvelope {
             if token.len() > jose_rs::MAX_TOKEN_BYTES {
                 return Err(InvalidJWEData::new_err("token too large"));
             }
-            // jose-rs 0.10's writer emits mandatory ciphertext="" for empty GCM
-            // plaintext, but its JSON parser applies the optional-member empty rule.
+            // An empty GCM message has a required empty ciphertext string. The
+            // envelope parser would otherwise reject it as an empty member.
             // Validate the complete original document with only that empty value
             // replaced, then restore the exact ciphertext before authentication.
             // Borrowed RawValue locates the value without rewriting any other member

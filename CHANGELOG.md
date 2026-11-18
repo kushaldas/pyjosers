@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.1 - 2026-11-18
+
+- Store assignments such as `key.kid = key.thumbprint()` in the JWK mapping so
+  exported public sets carry the same identifier as signed headers. Unknown
+  public attribute writes raise `AttributeError`. Use item syntax for extensions.
+- Add `jwt.dumps()` for exact JSON numbers from discovery and authenticated
+  claims. It accepts finite `Decimal` values and timezone-aware `datetime`
+  values, including in dictionaries supplied for signing.
+- Document typed key discovery, the numeric types exposed by each claims API,
+  and verification of the original compact token.
+- Update the published jose-rs dependency to 0.12.1.
+
 ## 0.4.0 - 2026-11-18
 
 - Refresh the Rust 1.89 lockfile with zeroize 1.9.2, const-oid 0.10.3 and

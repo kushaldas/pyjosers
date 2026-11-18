@@ -63,10 +63,10 @@ Native errors expose ``category`` with one of ``unsupported_capability``,
 ``key_material``, ``cryptographic`` or ``encoding``. Compatibility errors default
 to ``invalid_structure`` unless a native cause supplies a category.
 ``is_authentication_failure(error)`` merges backend crypto failures and native
-signature mismatch verdicts on verification/decryption paths. It is a coarse
-signal, not a complete detector: jose-rs 0.10.0 reports some PBES2 unwrap failures
-as ``key_material``. Always reject a failed operation regardless of category;
-do not expose fine-grained errors or password-oracle distinctions to peers.
+signature mismatch verdicts on verification/decryption paths. A PBES2 key unwrap
+can also fail with the ``key_material`` category.
+Reject the token on any decryption error and return the same failure to the
+peer regardless of the category.
 
 JWS reports preserve the structured category and authentication flag for each
 failed signature. Refusing an algorithm, an unknown identifier or an excessive

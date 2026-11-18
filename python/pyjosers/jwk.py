@@ -19,6 +19,14 @@ class JWKeyNotFound(InvalidJWKValue):
     """No unambiguous key matches the requested identifier."""
 
 
+# Attribute assignment is available for JOSE members. Extensions use mapping
+# syntax so typos and collisions with method names cannot shadow key data.
+_JWK_MEMBERS = frozenset(
+    "kty use key_ops alg kid x5u x5c x5t x5t#S256 "
+    "n e d p q dp dq qi oth crv x y k pub priv".split()
+)
+
+
 class JWK(MutableMapping):
     """A mutable JWK mapping. Use :meth:`generate` for fresh key material.
 
@@ -53,6 +61,23 @@ class JWK(MutableMapping):
             return self._data[name]
         except KeyError:
             raise AttributeError(name) from None
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name.startswith("_"):
+            object.__setattr__(self, name, value)
+        elif name in _JWK_MEMBERS:
+            self[name] = value
+        else:
+            raise AttributeError(f"unknown JWK attribute {name!r}; use mapping syntax for extensions")
+
+    def __delattr__(self, name: str) -> None:
+        if name in _JWK_MEMBERS:
+            try:
+                del self[name]
+            except KeyError:
+                raise AttributeError(name) from None
+        else:
+            object.__delattr__(self, name)
 
     def __repr__(self) -> str:
         return "JWK(<redacted>)"

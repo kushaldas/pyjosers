@@ -534,9 +534,9 @@ checksum = "3bd1574e617a9a6c1f8f8181bd7e841e1f20e4277607ef28945765188d6284d4"
 
 [[package]]
 name = "jose-rs"
-version = "0.12.0"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e7675f07ca054dab9f4cb131662b133d5a5f390db30b349d6ec2c45e0282764b"
+checksum = "e45b8689def4e85ffa24275d96cc96688d75825ecc50aa3e2f1f1d211835d9e3"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -898,7 +898,7 @@ dependencies = [
 
 [[package]]
 name = "pyjosers"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "jose-rs",
  "kryptering",
